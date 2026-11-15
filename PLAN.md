@@ -1,6 +1,7 @@
 # BLE Address-Rotation Linking Engine — Build Plan (v1.3)
 
-> Status: **Planning. No code written yet.** Repo: `bleforensics/`. Scope split in §0.5.
+> Status: **M1 and M2 done; M3 (clue features + rule-based stitcher) is next.**
+> Repo and package: `blestitch/`. Scope split in §0.5.
 
 ---
 
@@ -61,7 +62,7 @@ browser GUI on top, built **alongside** the engine. Cross-platform; runs on macO
 | Vault (later) | **SQLite** | Cross-session device profiles. |
 | Results artifact | **JSON + Parquet** | Seam between engine and GUI. |
 | Backend | **FastAPI** + `uvicorn`, WebSocket progress | Serves engine + results to the GUI. |
-| Frontend | **React + Vite + Plotly/D3** | Timeline/Gantt (WebGL/virtualized for 100+ tracks), packet view. Two-language monorepo. |
+| Frontend | **React + Vite + canvas/D3** | Timeline/Gantt on a virtualized canvas with D3 scales/zoom (chosen over Plotly at M2: no Gantt/WebGL bar trace, large bundle), packet view. Two-language monorepo. |
 | Packaging | `pyproject.toml`, `ruff`, `pytest` | Clean, testable. |
 
 **Pattern:** `engine (pure) → results artifact → FastAPI → React GUI`. Engine runs/tests headless.
@@ -85,9 +86,9 @@ v1 needs no labeled data (rule-based). v2's ML learns from real IRK-labeled capt
 ## 2. Module layout
 
 ```
-bleforensics/
-  io/            pcap_reader.py, loaders.py, labeled_trace.py
-  dissect/       pdu.py (+ address-type classify), epoch.py
+blestitch/
+  io/            pcap_reader.py, labeled_trace.py
+  dissect/       pdu.py, ad.py, continuity.py, vendors.py, epoch.py, profile.py
   features/      seq_counter.py, payload_entropy.py, structural.py, clock_skew.py(hw), pairwise.py
   link/          heuristic.py (v1 matcher), solver.py (time-windowed min-cost), model.py (v2 ML)
   eval/          irk_resolve.py, metrics.py            # v2
@@ -122,6 +123,14 @@ Records: `Packet`, `AddressEpoch`, `CandidatePair`, `FeatureVector`, `DeviceTrac
 
 Every milestone: tests green + a working GUI state.
 
+**M2 as built.** Reader: pcapng + gzip, Nordic DLT 272 layout validated against a real nRF Sniffer
+capture, hardware-clock timing, CRC filtering. Dissection: all legacy PDUs, SCAN_REQ/CONNECT_IND
+attached to their target epoch, generic AD decode, Apple Continuity and tracker/beacon decoders.
+Epoch profile (the M3 clue inputs): advertising interval + jitter, PDU/channel mix, payload shape,
+ordered payload variants, vendor/name/services. GUI: canvas timeline, epoch table, epoch detail.
+**Deferred from M2:** following extended-advertising AUX chains (only PDUs that carry the
+advertiser address are attributed); a GUI control for the epoch-split gap (API parameter only).
+
 ---
 
 ## 4. GUI panels
@@ -134,8 +143,8 @@ clues fired); packet dissector; run controls.
 
 ## 5. Status
 
-Resolved: Python engine + React/Vite/Plotly web GUI, built alongside · offline v1 · nRF Sniffer
-PCAP only · **v1 = rule-based stitcher (no SimBle/Docker/ML/IRKs)** · **v2 = IRKs + ML on real data
+Resolved: Python engine + React/Vite web GUI (canvas + D3 timeline), built alongside · offline v1 · nRF Sniffer
+PCAP/pcapng only · **v1 = rule-based stitcher (no SimBle/Docker/ML/IRKs)** · **v2 = IRKs + ML on real data
 + confidence meter + accuracy** · large scale (100+, windowed solver, WebGL timeline) · clock-skew,
 self-capture & vault gated on hardware · host macOS/Windows/Pi, dev in this cloud session, delivered
 via GitHub.
