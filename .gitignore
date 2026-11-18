@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Data & secrets (never commit captures, trained models, or keys)
+data/*.pcap
+data/*.pcapng
+*.pkl
+*.joblib
+irks*.json
+.env
+
+# OS
+.DS_Store
