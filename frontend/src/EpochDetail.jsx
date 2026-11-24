@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { fetchEpochDetail, fetchEpochPackets } from "./api.js";
-import { fmtClock, fmtDuration, fmtMs, fmtOffset, hexBytes } from "./format.js";
+import { fmtClock, fmtDuration, fmtMs, fmtOffset, hexBytes, trailName } from "./format.js";
 import { TYPE_BY_KEY } from "./types.js";
 
 const PACKET_PAGE = 200;
@@ -9,7 +9,7 @@ const PACKET_PAGE = 200;
 // Everything known about one epoch: its profile, each distinct payload it
 // sent (decoded, with the bytes that changed since the previous payload
 // marked), and its packets.
-export default function EpochDetail({ analysisId, epoch, tMin }) {
+export default function EpochDetail({ analysisId, epoch, track, tMin, onSelect }) {
   const [detail, setDetail] = useState(null);
   const [packets, setPackets] = useState(null);
   const [error, setError] = useState(null);
@@ -54,6 +54,12 @@ export default function EpochDetail({ analysisId, epoch, tMin }) {
       <div className="panel-head">
         <h2 className="mono">{epoch.address}</h2>
         <span className={`tag tag-${epoch.addr_type}`}>{type?.label ?? epoch.addr_type}</span>
+        {track && (
+          <button className="chip" onClick={() => onSelect({ kind: "track", id: track.id })}>
+            Trail {trailName(track.id)}
+            {track.n_addresses > 1 && ` · ${track.n_addresses} addresses`}
+          </button>
+        )}
       </div>
       {epoch.label && <p className="detail-label">{epoch.label}</p>}
 

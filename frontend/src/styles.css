@@ -514,3 +514,201 @@ td.identity {
   border-radius: 2px;
   padding: 0 1px;
 }
+
+/* ---- stitching: trails, links, clues ---------------------------------- */
+
+.tabs button {
+  font-size: 13px;
+  padding: 5px 12px;
+}
+td.identity.wide {
+  max-width: 160px;
+}
+.flag {
+  margin-left: 8px;
+  padding: 0 7px;
+  border: 1px solid #fab219;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.flag::before {
+  content: "◇ ";
+  color: #fab219;
+}
+.chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.link-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 8px 2px 0;
+}
+.key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.key-diamond,
+.chain-mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--fg);
+  flex: none;
+}
+.key-diamond.hollow,
+.chain-mark.hollow {
+  background: transparent;
+  border: 2px solid #fab219;
+}
+.key-dash {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px dashed var(--muted);
+}
+.hint {
+  margin-top: 4px;
+}
+
+.seam {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+.seam-arrow {
+  color: var(--muted);
+  font-size: 18px;
+}
+.seam-epoch,
+.chain button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.seam-epoch:hover,
+.chain button:hover {
+  border-color: var(--accent);
+}
+.warn-note {
+  border-left: 3px solid #fab219;
+  background: var(--panel-2);
+  padding: 8px 12px;
+  margin: 12px 0 0;
+  border-radius: 0 6px 6px 0;
+}
+
+table.clues {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.clues th {
+  position: static;
+}
+.clues th,
+.clues td {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.clues td {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.clue-name {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.clues tr.clue-detail td {
+  color: var(--muted);
+  white-space: normal;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.clues tr.clue-total td {
+  padding: 8px;
+  font-weight: 600;
+}
+.evidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.evidence-track {
+  position: relative;
+  width: min(120px, 16vw);
+  height: 8px;
+  background: #2a3542;
+  border-radius: 4px;
+}
+.evidence-track::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  border-left: 1px solid var(--muted);
+}
+.evidence-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.evidence-fill.pos {
+  background: #3987e5;
+  border-radius: 0 4px 4px 0;
+}
+.evidence-fill.neg {
+  background: #e66767;
+  border-radius: 4px 0 0 4px;
+}
+.evidence-num {
+  font-variant-numeric: tabular-nums;
+  min-width: 42px;
+}
+
+.chain {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 520px;
+  overflow: auto;
+}
+.chain button {
+  width: 100%;
+}
+.chain-link button {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 18px;
+  width: calc(100% - 18px);
+  background: transparent;
+  border-style: dashed;
+  font-size: 13px;
+}

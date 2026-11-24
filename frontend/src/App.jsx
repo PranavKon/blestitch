@@ -4,7 +4,10 @@ import { analyzeFile } from "./api.js";
 import EpochDetail from "./EpochDetail.jsx";
 import EpochTable from "./EpochTable.jsx";
 import { fmtClock, fmtDuration, fmtInt } from "./format.js";
+import LinkDetail from "./LinkDetail.jsx";
 import Timeline from "./Timeline.jsx";
+import TrackDetail from "./TrackDetail.jsx";
+import TrackTable from "./TrackTable.jsx";
 import { ADDR_TYPES } from "./types.js";
 
 export default function App() {
@@ -12,7 +15,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selection, setSelection] = useState(null); // { kind: epoch|link|track, id }
+  const [tab, setTab] = useState("trails");
   const [query, setQuery] = useState("");
   const [hiddenTypes, setHiddenTypes] = useState(() => new Set());
   const [minPackets, setMinPackets] = useState(1);
@@ -26,7 +30,7 @@ export default function App() {
     try {
       const next = await analyzeFile(file);
       setResult(next);
-      setSelectedId(null);
+      setSelection(null);
       setQuery("");
       setHiddenTypes(new Set());
       setMinPackets(1);
@@ -49,7 +53,14 @@ export default function App() {
     );
   }, [result, query, hiddenTypes, minPackets]);
 
-  const selected = result?.epochs.find((e) => e.id === selectedId) ?? null;
+  // Trails that still have at least one epoch after filtering.
+  const tracks = useMemo(() => {
+    if (!result) return [];
+    const visible = new Set(epochs.map((e) => e.track_id));
+    return result.tracks.filter((t) => visible.has(t.id));
+  }, [result, epochs]);
+
+  const selectedId = (kind) => (selection?.kind === kind ? selection.id : null);
 
   function toggleType(key) {
     setHiddenTypes((prev) => {
@@ -65,7 +76,7 @@ export default function App() {
       <header className="top">
         <div>
           <h1>blestitch</h1>
-          <p className="sub">BLE address-rotation stitcher — address epochs</p>
+          <p className="sub">BLE address-rotation stitcher</p>
         </div>
         <label
           className={`upload${dragging ? " dragging" : ""}`}
@@ -140,38 +151,104 @@ export default function App() {
 
           <Timeline
             epochs={epochs}
+            tracks={result.tracks}
+            links={result.links}
             tMin={result.t_min_us}
             tMax={result.t_max_us}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+            selection={selection}
+            onSelect={setSelection}
           />
 
           <div className="split">
-            <EpochTable
-              epochs={epochs}
-              tMin={result.t_min_us}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
-            {selected ? (
-              <EpochDetail
-                key={`${result.analysis_id}:${selected.id}`}
-                analysisId={result.analysis_id}
-                epoch={selected}
-                tMin={result.t_min_us}
-              />
-            ) : (
-              <section className="panel detail empty">
-                <p className="muted">
-                  Select an epoch on the timeline or in the table to see its profile, payloads and
-                  packets.
-                </p>
-              </section>
-            )}
+            <section className="panel">
+              <div className="panel-head">
+                <div className="seg tabs" role="tablist">
+                  <button
+                    role="tab"
+                    aria-selected={tab === "trails"}
+                    className={tab === "trails" ? "on" : ""}
+                    onClick={() => setTab("trails")}
+                  >
+                    Device trails · {tracks.length.toLocaleString()}
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={tab === "epochs"}
+                    className={tab === "epochs" ? "on" : ""}
+                    onClick={() => setTab("epochs")}
+                  >
+                    Address epochs · {epochs.length.toLocaleString()}
+                  </button>
+                </div>
+              </div>
+              {tab === "trails" ? (
+                <TrackTable
+                  tracks={tracks}
+                  tMin={result.t_min_us}
+                  selectedId={selectedId("track")}
+                  onSelect={(id) => setSelection({ kind: "track", id })}
+                />
+              ) : (
+                <EpochTable
+                  epochs={epochs}
+                  tMin={result.t_min_us}
+                  selectedId={selectedId("epoch")}
+                  onSelect={(id) => setSelection({ kind: "epoch", id })}
+                />
+              )}
+            </section>
+            <Detail result={result} selection={selection} onSelect={setSelection} />
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function Detail({ result, selection, onSelect }) {
+  const tMin = result.t_min_us;
+  if (selection?.kind === "epoch") {
+    const epoch = result.epochs[selection.id];
+    return (
+      <EpochDetail
+        key={`${result.analysis_id}:${epoch.id}`}
+        analysisId={result.analysis_id}
+        epoch={epoch}
+        track={result.tracks[epoch.track_id]}
+        tMin={tMin}
+        onSelect={onSelect}
+      />
+    );
+  }
+  if (selection?.kind === "link") {
+    return (
+      <LinkDetail
+        link={result.links[selection.id]}
+        epochs={result.epochs}
+        tMin={tMin}
+        acceptTotal={result.matcher.accept_total}
+        onSelect={onSelect}
+      />
+    );
+  }
+  if (selection?.kind === "track") {
+    return (
+      <TrackDetail
+        track={result.tracks[selection.id]}
+        epochs={result.epochs}
+        links={result.links}
+        tMin={tMin}
+        onSelect={onSelect}
+      />
+    );
+  }
+  return (
+    <section className="panel detail empty">
+      <p className="muted">
+        Select a trail, an address or a link — on the timeline or in the table — to see what is
+        behind it.
+      </p>
+    </section>
   );
 }
 
@@ -188,13 +265,17 @@ function Summary({ result }) {
   return (
     <>
       <section className="summary">
+        <Stat label="Device trails" value={fmtInt(result.tracks.length)} />
         <Stat label="Address epochs" value={fmtInt(result.n_epochs)} />
+        <Stat
+          label="Rotations linked"
+          value={fmtInt(result.links.filter((l) => l.kind === "rotation").length)}
+        />
         <Stat label="Advertising packets" value={fmtInt(result.n_packets)} />
         <Stat label="Capture length" value={fmtDuration(result.t_max_us - result.t_min_us)} />
-        <Stat label="Records in file" value={fmtInt(c.n_records)} />
       </section>
       <p className="capture-note muted small">
-        {c.link_types.join(", ")} ·{" "}
+        {fmtInt(c.n_records)} records · {c.link_types.join(", ")} ·{" "}
         {c.time_source === "firmware"
           ? "timed by the sniffer's hardware clock"
           : "timed by capture-file timestamps"}

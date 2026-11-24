@@ -1,6 +1,6 @@
 # BLE Address-Rotation Linking Engine — Build Plan (v1.3)
 
-> Status: **M1 and M2 done; M3 (clue features + rule-based stitcher) is next.**
+> Status: **M1–M3 done (first working stitch); M4 (scale + run controls) is next.**
 > Repo and package: `blestitch/`. Scope split in §0.5.
 
 ---
@@ -89,8 +89,8 @@ v1 needs no labeled data (rule-based). v2's ML learns from real IRK-labeled capt
 blestitch/
   io/            pcap_reader.py, labeled_trace.py
   dissect/       pdu.py, ad.py, continuity.py, vendors.py, epoch.py, profile.py
-  features/      seq_counter.py, payload_entropy.py, structural.py, clock_skew.py(hw), pairwise.py
-  link/          heuristic.py (v1 matcher), solver.py (time-windowed min-cost), model.py (v2 ML)
+  features/      summary.py, tokens.py, counters.py, pairwise.py (the clues), clock_skew.py (hw, later)
+  link/          heuristic.py (v1 matcher), solver.py (joint assignment), model.py (v2 ML)
   eval/          irk_resolve.py, metrics.py            # v2
   vault/         store.py                              # later
   results/       artifact.py (JSON/Parquet — GUI seam)
@@ -130,6 +130,28 @@ Epoch profile (the M3 clue inputs): advertising interval + jitter, PDU/channel m
 ordered payload variants, vendor/name/services. GUI: canvas timeline, epoch table, epoch detail.
 **Deferred from M2:** following extended-advertising AUX chains (only PDUs that carry the
 advertiser address are attributed); a GUI control for the epoch-split gap (API parameter only).
+
+**M3 as built.** Six clues (timing, structure, cadence, signal, carryover, counter) each give
+evidence in −1…+1; `link/heuristic.py` weighs and sums them with a fixed accept line.
+`link/solver.py` merges epochs that share an address, scores every allowed handoff, splits the
+candidates into independent groups and solves each exactly (Hungarian), one successor and one
+predecessor per address. Links with a close rival are flagged ambiguous. GUI: trail rows with link
+markers, trail table, link drilldown showing each clue's contribution.
+
+**Learned from the first real household capture (nRF Sniffer, protocol v3):**
+- Trackers near their owner rotated **all at the same instant**, so the joint solver is needed in
+  ordinary homes, not only in crowds. Signal strength and payload layout separated them.
+- Devices **restart their advertising train at rotation**: the new address does not continue the old
+  timing grid, so "phase continuity" is not a usable clue. The interval itself is stable.
+- **One device can advertise under several addresses at once** (seen: two addresses with identical
+  payloads changing at identical moments, rotating together). Trails are per *address chain*; such
+  twins are currently separate trails and their rotation links are flagged ambiguous.
+  **Open:** merge concurrent twins into one device.
+- Weak devices are heard on one channel and rarely; the interval estimator had to find the
+  fundamental period under heavy loss, and the timing clue is judged against how often a device is
+  actually heard.
+- The weights and thresholds are judgement calls checked against one capture and the fixtures. They
+  are not validated; that is what v2's ground truth is for.
 
 ---
 

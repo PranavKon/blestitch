@@ -54,7 +54,7 @@ def test_json_roundtrips():
     parsed = json.loads(_result().to_json())
     assert parsed["n_epochs"] == 4
     assert len(parsed["epochs"]) == 4
-    assert parsed["schema_version"] == 2
+    assert parsed["schema_version"] == 3
     assert parsed["capture"]["n_packets"] == 8
 
 

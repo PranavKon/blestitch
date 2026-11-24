@@ -25,7 +25,7 @@ from blestitch.io.pcap_reader import PcapFormatError
 from blestitch.pipeline import Analysis, analyze_bytes
 from blestitch.results.artifact import epoch_detail, packet_rows
 
-app = FastAPI(title="blestitch", version="0.2.0")
+app = FastAPI(title="blestitch", version="0.3.0")
 
 # The React dev server (Vite) runs on a different port; allow it in dev.
 app.add_middleware(

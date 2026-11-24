@@ -19,8 +19,10 @@ from dataclasses import dataclass, field
 
 APPLE_COMPANY_ID = 0x004C
 
+OVERFLOW_AREA = 0x01
 IBEACON = 0x02
 PROXIMITY_PAIRING = 0x07
+AIRPLAY_TARGET = 0x09
 MAGIC_SWITCH = 0x0B
 HANDOFF = 0x0C
 TETHERING_SOURCE = 0x0E
@@ -29,13 +31,14 @@ NEARBY_INFO = 0x10
 FIND_MY = 0x12
 
 MESSAGE_NAMES = {
+    OVERFLOW_AREA: "Overflow Area",
     IBEACON: "iBeacon",
     0x03: "AirPrint",
     0x05: "AirDrop",
     0x06: "HomeKit",
     PROXIMITY_PAIRING: "Proximity Pairing",
     0x08: "Hey Siri",
-    0x09: "AirPlay Target",
+    AIRPLAY_TARGET: "AirPlay Target",
     0x0A: "AirPlay Source",
     MAGIC_SWITCH: "Magic Switch",
     HANDOFF: "Handoff",
@@ -118,6 +121,19 @@ def parse_continuity(data: bytes) -> list[ContinuityMessage]:
     out: list[ContinuityMessage] = []
     i, n = 0, len(data)
     while i + 2 <= n:
+        if data[i] == OVERFLOW_AREA:
+            # No length byte: the rest is a 128-bit bitmap of the services
+            # that backgrounded apps are advertising.
+            body = data[i + 1 :]
+            out.append(
+                ContinuityMessage(
+                    type=OVERFLOW_AREA,
+                    name=MESSAGE_NAMES[OVERFLOW_AREA],
+                    data=body,
+                    fields=[("service bitmap", body.hex())],
+                )
+            )
+            break
         mtype, length = data[i], data[i + 1]
         body = data[i + 2 : i + 2 + length]
         out.append(
@@ -157,6 +173,10 @@ def _ibeacon(d: bytes) -> list[tuple[str, str]]:
 
 
 def _proximity_pairing(d: bytes) -> list[tuple[str, str]]:
+    if d[0] != 0x01:
+        # Only the 0x01 form carries plaintext status; other forms (seen from
+        # paired AirPods near their owner) are opaque.
+        return [("form", f"0x{d[0]:02x}"), ("encrypted", d[1:].hex())]
     model = (d[1] << 8) | d[2]
     out = [
         ("model", _PP_MODELS.get(model, f"0x{model:04x}")),
@@ -170,6 +190,14 @@ def _proximity_pairing(d: bytes) -> list[tuple[str, str]]:
     if len(d) > 9:
         out.append(("encrypted", d[9:].hex()))
     return out
+
+
+def _airplay_target(d: bytes) -> list[tuple[str, str]]:
+    return [
+        ("ipv4", ".".join(str(b) for b in d[2:6])),
+        ("flags", f"0x{d[0]:02x}"),
+        ("config seed", f"0x{d[1]:02x}"),
+    ] + ([("rest", d[6:].hex())] if len(d) > 6 else [])
 
 
 def _magic_switch(d: bytes) -> list[tuple[str, str]]:
@@ -244,6 +272,7 @@ def _find_my(d: bytes) -> list[tuple[str, str]]:
 _DECODERS = {
     IBEACON: _ibeacon,
     PROXIMITY_PAIRING: _proximity_pairing,
+    AIRPLAY_TARGET: _airplay_target,
     MAGIC_SWITCH: _magic_switch,
     HANDOFF: _handoff,
     TETHERING_SOURCE: _tethering_source,

@@ -151,10 +151,11 @@ def nordic_record(
 
 def build_pcap_raw(bodies: list[tuple[int, bytes]], linktype: int = 256) -> bytes:
     """Classic pcap from (t_us, record body) pairs."""
-    out = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, linktype)
+    parts = [struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, linktype)]
     for t_us, body in bodies:
-        out += struct.pack("<IIII", t_us // 1_000_000, t_us % 1_000_000, len(body), len(body)) + body
-    return out
+        parts.append(struct.pack("<IIII", t_us // 1_000_000, t_us % 1_000_000, len(body), len(body)))
+        parts.append(body)
+    return b"".join(parts)
 
 
 def build_pcap(records: list[tuple], linktype: int = 256) -> bytes:
@@ -185,16 +186,16 @@ def build_pcapng(
     packets: (interface index, timestamp in interface units, record body).
     `tsresol` sets if_tsresol (e.g. 9 for nanoseconds); default microseconds.
     """
-    out = _block(0x0A0D0D0A, struct.pack("<IHHq", 0x1A2B3C4D, 1, 0, -1))
+    parts = [_block(0x0A0D0D0A, struct.pack("<IHHq", 0x1A2B3C4D, 1, 0, -1))]
     for linktype in linktypes:
         opts = b""
         if tsresol is not None:
             opts = struct.pack("<HH", 9, 1) + bytes([tsresol, 0, 0, 0]) + struct.pack("<HH", 0, 0)
-        out += _block(1, struct.pack("<HHI", linktype, 0, 0) + opts)
+        parts.append(_block(1, struct.pack("<HHI", linktype, 0, 0) + opts))
     for iface, ts, body in packets:
         head = struct.pack("<IIIII", iface, ts >> 32, ts & 0xFFFFFFFF, len(body), len(body))
-        out += _block(6, head + body)
-    return out
+        parts.append(_block(6, head + body))
+    return b"".join(parts)
 
 
 # ---- scenarios ----------------------------------------------------------
@@ -309,3 +310,37 @@ def make_rotation_capture(
         for n, (t, ch, rssi, ll) in enumerate(events)
     ]
     return build_pcapng([272], packets), truth
+
+
+def build_scenario(segments: list[dict], *, seed: int = 1, loss: float = 0.0) -> bytes:
+    """A capture from a list of advertising segments, one per address epoch.
+
+    Each segment: ``address, start_s, stop_s`` plus optional ``interval_ms``
+    (default 200), ``rssi`` (default -60), ``payload`` (bytes, or a function of
+    time in µs), ``tx_add`` (default 1) and ``pdu`` (default ADV_IND).
+    """
+    rng = random.Random(seed)
+    records = []
+    for seg in segments:
+        payload = seg.get("payload", ADV_DATA_B)
+        t = int(seg["start_s"] * 1e6)
+        while t <= seg["stop_s"] * 1e6:
+            for i, ch in enumerate((37, 38, 39)):
+                if rng.random() >= loss:
+                    records.append((
+                        t + i * 400, ch, seg.get("rssi", -60) + rng.randint(-1, 1),
+                        seg["address"], seg.get("tx_add", 1), seg.get("pdu", ADV_IND),
+                        payload(t) if callable(payload) else payload,
+                    ))
+            t += int(seg.get("interval_ms", 200) * 1000) + rng.randint(0, 10_000)
+    records.sort(key=lambda r: r[0])
+    return build_pcap(records)
+
+
+def rpa(n: int) -> int:
+    """A distinct resolvable private address for test device/epoch `n`."""
+    return (0b01 << 46) | (0x1000_0000_0000 + n * 0x0101_0101)
+
+
+def static_addr(n: int) -> int:
+    return (0b11 << 46) | (0x1000_0000_0000 + n * 0x0101_0101)

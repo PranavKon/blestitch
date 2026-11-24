@@ -76,3 +76,22 @@ export function fmtTick(seconds, step) {
   const decimals = step >= 1 ? 0 : Math.min(4, Math.ceil(-Math.log10(step)));
   return fmtOffset(Math.round(seconds * US_PER_S), decimals).slice(1);
 }
+
+// ---- stitching ---------------------------------------------------------
+
+// Trails are numbered from 1 for people; ids are 0-based.
+export function trailName(trackId) {
+  return `D${trackId + 1}`;
+}
+
+// The matcher's score is a ranking aid, not a probability, so it is shown
+// with a word as well as a number.
+export function scoreWord(score) {
+  if (score >= 0.9) return "strong";
+  if (score >= 0.7) return "good";
+  return "weak";
+}
+
+export function fmtScore(score) {
+  return score == null ? "—" : `${score.toFixed(2)} (${scoreWord(score)})`;
+}

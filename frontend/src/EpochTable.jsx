@@ -53,11 +53,6 @@ export default function EpochTable({ epochs, tMin, selectedId, onSelect }) {
   }
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Address epochs</h2>
-        <span className="muted small">{epochs.length.toLocaleString()} shown</span>
-      </div>
       <div className="table-scroll" ref={scroller}>
         <table className="epochs">
           <thead>
@@ -124,6 +119,5 @@ export default function EpochTable({ epochs, tMin, selectedId, onSelect }) {
           </button>
         )}
       </div>
-    </section>
   );
 }

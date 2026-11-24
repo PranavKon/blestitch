@@ -128,3 +128,23 @@ def test_service_data_tags_reach_the_summary():
     adv = bytes([0x06, 0x16, 0xED, 0xFE, 0x01, 0x02, 0x03])
     assert summarize_ad(adv).tags == ["Tile"]
     assert summarize_ad(adv).service_uuids == ["feed"]
+
+
+def test_continuity_overflow_area_has_no_length_byte():
+    bitmap = bytes(8) + bytes([0x40]) + bytes(6) + bytes([0x10])
+    (msg,) = parse_continuity(bytes([0x01]) + bitmap)
+    assert msg.name == "Overflow Area"
+    assert msg.data == bitmap
+    assert dict(msg.fields)["service bitmap"] == bitmap.hex()
+
+
+def test_continuity_airplay_target_carries_an_ip():
+    msgs = parse_continuity(bytes([0x09, 0x06, 0x13, 0x95, 192, 168, 1, 20]))
+    assert dict(msgs[0].fields)["ipv4"] == "192.168.1.20"
+
+
+def test_continuity_proximity_pairing_paired_form_is_opaque():
+    (msg,) = parse_continuity(bytes([0x07, 0x11, 0x06]) + bytes(range(16)))
+    fields = dict(msg.fields)
+    assert fields["form"] == "0x06"
+    assert "model" not in fields

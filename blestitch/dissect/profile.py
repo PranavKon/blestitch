@@ -29,6 +29,10 @@ from blestitch.records import (
 # PDUs of one advertising event are at most 10 ms apart (Vol 6, Part B §4.4.2).
 _EVENT_SPAN_US = 10_000
 _MIN_INTERVAL_SAMPLES = 3
+_MAX_PERIOD_DIVISOR = 6
+_MIN_PERIOD_US = 20_000       # the shortest legal advertising interval
+_PERIOD_TOLERANCE = 0.12      # how far from a whole multiple a gap may sit
+_PERIOD_GOOD_FIT = 0.85
 
 
 @dataclass(slots=True)
@@ -111,8 +115,8 @@ def estimate_adv_interval(
     The interval is estimated from gaps between consecutive packets *on the
     same channel*, so it does not matter which of the three channels the
     sniffer happened to catch. Missed events show up as gaps near 2x, 3x, …
-    the interval; each gap is divided by its nearest multiple before taking
-    the median. Jitter is the median absolute deviation of single-interval
+    the interval; the fundamental period is found first, then each gap is
+    divided by its nearest multiple before taking the median. Jitter is the median absolute deviation of single-interval
     gaps, which for a compliant advertiser reflects its 0–10 ms advDelay.
     """
     adv = [p for p in pkts if p.pdu_type != PDU_SCAN_RSP and p.channel >= 37]
@@ -136,9 +140,8 @@ def estimate_adv_interval(
     if len(gaps) < _MIN_INTERVAL_SAMPLES:
         return n_events, None, None
 
-    gaps.sort()
-    base = gaps[len(gaps) // 4]  # lower quartile: robust guess at one interval
-    multiples = [max(1, round(g / base)) for g in gaps]
+    period = _fundamental_period(sorted(gaps))
+    multiples = [max(1, round(g / period)) for g in gaps]
     interval = median(g / k for g, k in zip(gaps, multiples))
     singles = [g for g, k in zip(gaps, multiples) if k == 1]
     jitter = median(abs(g - interval) for g in singles) if singles else None
@@ -147,6 +150,30 @@ def estimate_adv_interval(
         round(interval / 1000, 2),
         round(jitter / 1000, 2) if jitter is not None else None,
     )
+
+
+def _fundamental_period(gaps: list[int]) -> float:
+    """The advertising interval that best explains sorted `gaps`.
+
+    With light loss the lower-quartile gap is one interval. With heavy loss
+    (a weak device heard on one channel) even the small gaps span several
+    intervals, so the quartile is tried divided by 1, 2, 3, …: the first
+    divisor under which nearly every gap is a whole number of periods wins.
+    """
+    base = gaps[len(gaps) // 4]
+    best, best_fit = float(base), -1.0
+    for divisor in range(1, _MAX_PERIOD_DIVISOR + 1):
+        period = base / divisor
+        if period < _MIN_PERIOD_US:
+            break
+        fit = sum(
+            abs(g / period - round(g / period)) <= _PERIOD_TOLERANCE for g in gaps
+        ) / len(gaps)
+        if fit >= _PERIOD_GOOD_FIT:
+            return period
+        if fit > best_fit:
+            best, best_fit = period, fit
+    return best
 
 
 def _payload_variants(pkts: list[Packet]) -> list[PayloadVariant]:

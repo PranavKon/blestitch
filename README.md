@@ -14,12 +14,33 @@ capture, and shows the result in a web GUI.
 A **rule-based** stitcher — no training data, no answer keys. The pipeline:
 
 ```
-capture → dissect → address epochs → (M3: stitch into device trails) → GUI
+capture → dissect → address epochs → clue features → matcher → solver → device trails → GUI
 ```
 
-Today (M2) the pipeline stops at profiled address epochs: load a capture and
-explore every temporary address on a zoomable timeline, with its advertising
-cadence, vendor/protocol identity and decoded payloads.
+Load a capture and every temporary address appears on a zoomable timeline,
+grouped into device trails, with the evidence behind each link one click away.
+
+## How it stitches
+
+An *epoch* is one address's stretch of packets. For every pair "address A went
+quiet, address B appeared shortly after" the matcher weighs six clues:
+
+| Clue | What it checks |
+|---|---|
+| timing | B was first heard soon after A's last packet, judged against how often the device was being heard at all |
+| structure | the advertisement is laid out the same way |
+| cadence | the advertising interval is the same |
+| signal | signal strength just before and just after matches |
+| carryover | payload content survived the change (a name, an AirPlay address, a service-data blob), discounted by how many other devices send the same thing |
+| counter | a rolling counter (Apple Handoff, Eddystone-TLM, MiBeacon) continues |
+
+Each clue gives evidence from −1 to +1, multiplied by a fixed weight. A solver
+then picks links **jointly** — one successor and one predecessor per address —
+so that several devices rotating at the same instant are resolved together
+rather than greedily. Links with a close rival are flagged *ambiguous*.
+
+The score is a ranking aid from fixed rules, **not a calibrated probability**.
+Measuring accuracy needs ground truth (the devices' IRKs) and is v2.
 
 ## What it reads
 
@@ -45,9 +66,11 @@ cadence, vendor/protocol identity and decoded payloads.
 blestitch/      pure-Python engine (no UI deps)
   io/           capture reader (pcap/pcapng; DLT 256 / Nordic 272), LabeledTrace seam
   dissect/      PDU + AD parsing, vendor decoders, epoch segmentation, epoch profiles
+  features/     per-epoch features, tokens, counters, the pairwise clues
+  link/         rule-based matcher (heuristic.py) and global solver (solver.py)
   results/      structured JSON artifact (engine ↔ GUI seam)
   data/         vendored Bluetooth company / service identifiers (see NOTICE)
-  link/ features/ eval/ vault/   (filled in later milestones)
+  eval/ vault/  (filled in later milestones)
 backend/        FastAPI (serves the engine to the GUI)
 frontend/       React + Vite GUI (canvas timeline on D3 scales/zoom)
 scripts/        fetch_samples.py — public sample captures for development
@@ -74,12 +97,16 @@ npm run dev                             # http://localhost:5173
 Open the frontend and choose (or drop) a BLE capture. The dev server proxies
 `/api/*` to the backend automatically.
 
-- **Timeline:** one bar per address epoch, coloured by address type. Drag to
-  pan, Ctrl/⌘ + scroll (or pinch) to zoom, click a bar to select it.
-- **Epoch table:** the same epochs, sortable; rows are keyboard-selectable.
-- **Epoch detail:** cadence, RSSI, channels, PDU mix, then every distinct
-  payload in order of first appearance — decoded, with the bytes that changed
-  since the previous payload highlighted — and the packet list.
+- **Timeline:** one row per device trail, one bar per address, coloured by
+  address type. A diamond marks each rotation link (hollow when ambiguous).
+  Drag to pan, Ctrl/⌘ + scroll (or pinch) to zoom. "Packed rows" and "One row
+  per epoch" show the raw epochs instead.
+- **Tables:** device trails and address epochs, sortable; rows are
+  keyboard-selectable.
+- **Detail:** click a *link* for the clues that fired and how much each added;
+  a *trail* for its chain of addresses; an *address* for its cadence, RSSI,
+  PDU mix, every distinct payload (decoded, with changed bytes highlighted)
+  and its packets.
 
 ## Sample captures
 
@@ -101,5 +128,6 @@ Tests that need the sample captures skip when they have not been fetched.
 ## Status
 
 v1 milestones: **M1 done** (vertical slice), **M2 done** (dissection, epoch
-profiles, timeline + drilldown GUI). Next: M3 clue features + rule-based
-stitcher + global solver. See `PLAN.md`.
+profiles, timeline + drilldown GUI), **M3 done** (clue features, rule-based
+matcher, global solver, trails + link drilldown). Next: M4 scale and run
+controls. See `PLAN.md`.

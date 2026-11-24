@@ -127,3 +127,49 @@ class AddressEpoch:
     @property
     def timestamps_us(self) -> list[int]:
         return [p.t_hw_us for p in self.packets]
+
+
+@dataclass(slots=True)
+class Clue:
+    """One piece of evidence for or against "these two epochs are one device".
+
+    `evidence` runs from -1 (contradicts) through 0 (says nothing) to +1
+    (supports); `weight` is how much the matcher trusts this kind of clue.
+    `detail` is a short human-readable account shown in the GUI.
+    """
+
+    name: str
+    evidence: float
+    weight: float
+    detail: str
+
+    @property
+    def contribution(self) -> float:
+        return self.evidence * self.weight
+
+
+@dataclass(slots=True)
+class Link:
+    """A scored claim that epoch `a` is followed by epoch `b` on one device.
+
+    kind "rotation": the device changed address between the two epochs.
+    kind "same_address": the same address was simply seen again after a gap.
+    """
+
+    a: int                       # epoch id of the earlier epoch
+    b: int                       # epoch id of the later epoch
+    kind: str
+    gap_us: int
+    total: float = 0.0           # sum of clue contributions
+    score: float = 1.0           # total squashed to 0..1; 0.5 is the accept line
+    clues: list[Clue] = field(default_factory=list)
+    # How far ahead of the best competing link for either epoch (None: unrivalled).
+    margin: float | None = None
+
+
+@dataclass(slots=True)
+class DeviceTrack:
+    """One stitched device trail: its epochs in time order."""
+
+    id: int
+    epoch_ids: list[int] = field(default_factory=list)

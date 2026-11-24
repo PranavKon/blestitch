@@ -23,3 +23,19 @@ export function packLanes(epochs, gapUs = 0) {
 export function oneLaneEach(epochs) {
   return [...epochs].sort((a, b) => a.t_start_us - b.t_start_us).map((e) => [e]);
 }
+
+// One lane per stitched device trail, holding whichever of its epochs passed
+// the filters. Trails with nothing visible are dropped.
+export function trailLanes(epochs, tracks) {
+  const byTrack = new Map();
+  for (const e of epochs) {
+    if (!byTrack.has(e.track_id)) byTrack.set(e.track_id, []);
+    byTrack.get(e.track_id).push(e);
+  }
+  return tracks
+    .filter((t) => byTrack.has(t.id))
+    .map((t) => ({
+      trackId: t.id,
+      epochs: byTrack.get(t.id).sort((a, b) => a.t_start_us - b.t_start_us),
+    }));
+}

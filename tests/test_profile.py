@@ -107,3 +107,16 @@ def test_rotation_scenario_segments_into_one_epoch_per_address():
     assert by_device["wearable"][0].n_scan_req > 0
     assert by_device["tracker"][0].tags == ["Find My"]
     assert by_device["beacon"][0].label == "Eddystone-EID"
+
+
+def test_interval_estimate_when_most_events_are_missed():
+    # A weak device heard on one channel only, four events in five lost: even
+    # the smallest gaps span several intervals.
+    rng = random.Random(3)
+    records, t = [], 1_000_000
+    for _ in range(1500):
+        if rng.random() < 0.2:
+            records.append((t, 37, -88, ADDR_B1, 1, ADV_IND, ADV_DATA_B))
+        t += 185_000 + rng.randint(0, 2_000)
+    _, interval, _ = estimate_adv_interval(list(iter_packets(build_pcap(records))))
+    assert 184 < interval < 188
