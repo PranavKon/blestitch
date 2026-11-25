@@ -344,3 +344,23 @@ def rpa(n: int) -> int:
 
 def static_addr(n: int) -> int:
     return (0b11 << 46) | (0x1000_0000_0000 + n * 0x0101_0101)
+
+
+def make_pcapng_capture() -> bytes:
+    """A five-packet scenario as pcapng + Nordic DLT 272, the container and
+    link type a real nRF Sniffer capture uses."""
+    records = [
+        (1_000_000, 37, -50, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_100_000, 38, -52, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_200_000, 39, -55, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_050_000, 37, -60, ADDR_B1, 1, ADV_IND, ADV_DATA_B),
+        (1_300_000, 37, -40, ADDR_PUB, 0, ADV_NONCONN_IND, ADV_DATA_PUB),
+    ]
+    return build_pcapng(
+        [272],
+        [
+            (0, t_us, nordic_record(adv_ll(address, tx_add, pdu_type, advdata),
+                                    channel=channel, rssi=rssi, counter=n, time_field=t_us))
+            for n, (t_us, channel, rssi, address, tx_add, pdu_type, advdata) in enumerate(records)
+        ],
+    )
