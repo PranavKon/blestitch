@@ -1,6 +1,7 @@
 # BLE Address-Rotation Linking Engine — Build Plan (v1.3)
 
-> Status: **Planning. No code written yet.** Repo: `bleforensics/`. Scope split in §0.5.
+> Status: **M1–M3 done (first working stitch); M4 (scale + run controls) is next.**
+> Repo and package: `blestitch/`. Scope split in §0.5.
 
 ---
 
@@ -61,7 +62,7 @@ browser GUI on top, built **alongside** the engine. Cross-platform; runs on macO
 | Vault (later) | **SQLite** | Cross-session device profiles. |
 | Results artifact | **JSON + Parquet** | Seam between engine and GUI. |
 | Backend | **FastAPI** + `uvicorn`, WebSocket progress | Serves engine + results to the GUI. |
-| Frontend | **React + Vite + Plotly/D3** | Timeline/Gantt (WebGL/virtualized for 100+ tracks), packet view. Two-language monorepo. |
+| Frontend | **React + Vite + canvas/D3** | Timeline/Gantt on a virtualized canvas with D3 scales/zoom (chosen over Plotly at M2: no Gantt/WebGL bar trace, large bundle), packet view. Two-language monorepo. |
 | Packaging | `pyproject.toml`, `ruff`, `pytest` | Clean, testable. |
 
 **Pattern:** `engine (pure) → results artifact → FastAPI → React GUI`. Engine runs/tests headless.
@@ -85,11 +86,11 @@ v1 needs no labeled data (rule-based). v2's ML learns from real IRK-labeled capt
 ## 2. Module layout
 
 ```
-bleforensics/
-  io/            pcap_reader.py, loaders.py, labeled_trace.py
-  dissect/       pdu.py (+ address-type classify), epoch.py
-  features/      seq_counter.py, payload_entropy.py, structural.py, clock_skew.py(hw), pairwise.py
-  link/          heuristic.py (v1 matcher), solver.py (time-windowed min-cost), model.py (v2 ML)
+blestitch/
+  io/            pcap_reader.py, labeled_trace.py
+  dissect/       pdu.py, ad.py, continuity.py, vendors.py, epoch.py, profile.py
+  features/      summary.py, tokens.py, counters.py, pairwise.py (the clues), clock_skew.py (hw, later)
+  link/          heuristic.py (v1 matcher), solver.py (joint assignment), model.py (v2 ML)
   eval/          irk_resolve.py, metrics.py            # v2
   vault/         store.py                              # later
   results/       artifact.py (JSON/Parquet — GUI seam)
@@ -122,6 +123,44 @@ Records: `Packet`, `AddressEpoch`, `CandidatePair`, `FeatureVector`, `DeviceTrac
 
 Every milestone: tests green + a working GUI state.
 
+**M2 as built.** Reader: pcapng + gzip, Nordic DLT 272 layout validated against a real nRF Sniffer
+capture, hardware-clock timing, CRC filtering. Dissection: all legacy PDUs, SCAN_REQ/CONNECT_IND
+attached to their target epoch, generic AD decode, Apple Continuity and tracker/beacon decoders.
+Epoch profile (the M3 clue inputs): advertising interval + jitter, PDU/channel mix, payload shape,
+ordered payload variants, vendor/name/services. GUI: canvas timeline, epoch table, epoch detail.
+**Deferred from M2:** following extended-advertising AUX chains (only PDUs that carry the
+advertiser address are attributed); a GUI control for the epoch-split gap (API parameter only).
+
+**M3 as built.** Six clues (timing, structure, cadence, signal, carryover, counter) each give
+evidence in −1…+1; `link/heuristic.py` weighs and sums them with a fixed accept line.
+`link/solver.py` merges epochs that share an address, scores every allowed handoff, splits the
+candidates into independent groups and solves each exactly (Hungarian), one successor and one
+predecessor per address. Links with a close rival are flagged ambiguous. GUI: trail rows with link
+markers, trail table, link drilldown showing each clue's contribution.
+
+**Learned from the first real household capture (nRF Sniffer, protocol v3):**
+- Trackers near their owner rotated **all at the same instant**, so the joint solver is needed in
+  ordinary homes, not only in crowds. Signal strength and payload layout separated them.
+- Devices **restart their advertising train at rotation**: the new address does not continue the old
+  timing grid, so "phase continuity" is not a usable clue. The interval itself is stable.
+- **One device can advertise under several addresses at once** (seen: two addresses with identical
+  payloads changing at identical moments, rotating together). Trails are per *address chain*.
+- Weak devices are heard on one channel and rarely; the interval estimator had to find the
+  fundamental period under heavy loss, and the timing clue is judged against how often a device is
+  actually heard.
+- A second, 27-minute household capture (191 epochs) added: a **sleeping device that wakes for about
+  five seconds at a time, under fresh addresses each time**; tracker rotations landing exactly on
+  quarter-hour wall-clock marks; and concurrent twins on most Apple computers/TVs. In response:
+  re-identification across long silences by identifier-grade content, and sibling grouping of
+  trails that send the same such content at once (`link/siblings.py`). Ambiguous links fell from
+  77 to 16 of ~100; 191 epochs became 50 trails in 38 estimated devices.
+  **Still open:** addresses of one device that share *no* content (e.g. its AirPlay address and its
+  Nearby Info addresses) are only related by being born and dying together. That is not used,
+  because devices that all rotate on the same wall-clock mark look the same; so the device count is
+  still an overestimate.
+- The weights and thresholds are judgement calls checked against two captures and the fixtures. They
+  are not validated; that is what v2's ground truth is for.
+
 ---
 
 ## 4. GUI panels
@@ -134,11 +173,10 @@ clues fired); packet dissector; run controls.
 
 ## 5. Status
 
-Resolved: Python engine + React/Vite/Plotly web GUI, built alongside · offline v1 · nRF Sniffer
-PCAP only · **v1 = rule-based stitcher (no SimBle/Docker/ML/IRKs)** · **v2 = IRKs + ML on real data
+Resolved: Python engine + React/Vite web GUI (canvas + D3 timeline), built alongside · offline v1 · nRF Sniffer
+PCAP/pcapng only · **v1 = rule-based stitcher (no SimBle/Docker/ML/IRKs)** · **v2 = IRKs + ML on real data
 + confidence meter + accuracy** · large scale (100+, windowed solver, WebGL timeline) · clock-skew,
-self-capture & vault gated on hardware · host macOS/Windows/Pi, dev in this cloud session, delivered
-via GitHub.
+self-capture & vault gated on hardware · host macOS/Windows/Pi.
 
 Minor open assumption (non-blocking): v2 participant set is fixed & known (all IRKs held).
 ```

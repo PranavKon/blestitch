@@ -18,6 +18,26 @@ from blestitch.records import Packet
 
 
 @dataclass(slots=True)
+class CaptureStats:
+    """What the reader did with every record in a capture file.
+
+    Anything not turned into a `Packet` is counted here rather than silently
+    dropped, so the GUI can show how much of the capture was usable.
+    """
+
+    n_records: int = 0          # records in the file, on any interface
+    n_packets: int = 0          # advertising PDUs kept
+    n_bad_crc: int = 0          # failed the sniffer's CRC check (dropped)
+    n_data_channel: int = 0     # connection traffic, not advertising (dropped)
+    n_unattributed: int = 0     # extended adv with no advertiser address
+    n_malformed: int = 0        # too short / truncated to parse
+    n_unsupported_link: int = 0  # records on a link type we do not read
+    link_types: list[str] = field(default_factory=list)
+    # "firmware": sniffer hardware clock; "capture": host/record timestamps.
+    time_source: str = "capture"
+
+
+@dataclass(slots=True)
 class LabeledTrace:
     """A time-ordered set of packets plus optional ground-truth labels."""
 
@@ -25,6 +45,7 @@ class LabeledTrace:
     source: str = ""
     # address (int) -> true device id. None => blind / unlabeled.
     labels: dict[int, int] | None = None
+    stats: CaptureStats = field(default_factory=CaptureStats)
 
     def __len__(self) -> int:
         return len(self.packets)
