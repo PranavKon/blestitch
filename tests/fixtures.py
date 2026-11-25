@@ -64,3 +64,45 @@ def make_capture() -> bytes:
         (2_100_000, 38, -53, ADDR_A2, 1, ADV_IND, ADV_DATA_A),
     ]
     return build_pcap(records)
+
+
+# --- PCAPNG + Nordic (DLT 272) fixtures (matches real nRF Sniffer layout) --- #
+
+def _nordic_body(channel: int, rssi: int, address: int, tx_add: int,
+                 pdu_type: int, advdata: bytes) -> bytes:
+    """7-byte transport header + 10-byte BLE header + air packet.
+
+    body[7] = BLE-header length (10); byte 9 = channel; byte 10 = RSSI magnitude.
+    """
+    air = _ble_ll(address, tx_add, pdu_type, advdata)
+    transport = bytes([0x0E, 0x00, 0x00, 0x03, 0x00, 0x00, 0x02])
+    ble_hdr = bytes([0x0A, 0x01, channel & 0xFF, (-rssi) & 0xFF, 0, 0, 0, 0, 0, 0])
+    return transport + ble_hdr + air
+
+
+def build_pcapng(records: list[tuple], linktype: int = 272) -> bytes:
+    """records: (t_us, channel, rssi, address, tx_add, pdu_type, advdata)."""
+    def block(btype: int, body: bytes) -> bytes:
+        pad = (-len(body)) % 4
+        total = 12 + len(body) + pad
+        return struct.pack("<II", btype, total) + body + b"\x00" * pad + struct.pack("<I", total)
+
+    out = block(0x0A0D0D0A, struct.pack("<IHHq", 0x1A2B3C4D, 1, 0, -1))  # SHB
+    out += block(0x00000001, struct.pack("<HHI", linktype, 0, 0))         # IDB
+    for t_us, channel, rssi, address, tx_add, pdu_type, advdata in records:
+        data = _nordic_body(channel, rssi, address, tx_add, pdu_type, advdata)
+        epb = struct.pack("<IIIII", 0, t_us >> 32, t_us & 0xFFFFFFFF, len(data), len(data)) + data
+        out += block(0x00000006, epb)                                      # EPB
+    return out
+
+
+def make_pcapng_capture() -> bytes:
+    """Same scenario as make_capture(), but as PCAPNG + Nordic DLT 272."""
+    records = [
+        (1_000_000, 37, -50, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_100_000, 38, -52, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_200_000, 39, -55, ADDR_A1, 1, ADV_IND, ADV_DATA_A),
+        (1_050_000, 37, -60, ADDR_B1, 1, ADV_IND, ADV_DATA_B),
+        (1_300_000, 37, -40, ADDR_PUB, 0, ADV_NONCONN_IND, ADV_DATA_PUB),
+    ]
+    return build_pcapng(records)
