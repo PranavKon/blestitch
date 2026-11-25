@@ -1,7 +1,8 @@
-from blestitch.io.pcap_reader import iter_packets
-from blestitch.dissect.epoch import segment_epochs
-from blestitch.records import AddrType
 from fixtures import ADDR_A1, ADDR_PUB, make_pcapng_capture
+
+from blestitch.dissect.epoch import segment_epochs
+from blestitch.io.pcap_reader import iter_packets
+from blestitch.records import AddrType
 
 
 def _packets():

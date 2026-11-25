@@ -52,5 +52,7 @@ def test_wireshark_coverage_captures_parse_without_malformed_adv():
 
     a = _analyze("btle_coverage.pcapng.gz")
     assert "NORDIC_BLE (272)" in a.result.capture.link_types
-    assert a.result.capture.n_unsupported_link > 0   # it also has a DLT 251 interface
+    # its third interface is bare LL (DLT 251), which is read too
+    assert "BLUETOOTH_LE_LL (251)" in a.result.capture.link_types
+    assert a.result.capture.n_unsupported_link == 0
     assert any(e.local_name == "LE-cov" for e in a.result.epochs)

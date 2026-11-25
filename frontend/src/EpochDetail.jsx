@@ -89,7 +89,7 @@ export default function EpochDetail({ analysisId, epoch, track, tMin, onSelect }
             </>
           )}
         </Fact>
-        <Fact label="Channels">{counts(epoch.channel_counts)}</Fact>
+        <Fact label="Channels">{counts(epoch.channel_counts) || "not recorded in this capture"}</Fact>
         <Fact label="PDU types">{counts(epoch.pdu_counts)}</Fact>
         <Fact label="Behaviour">
           {[
@@ -164,7 +164,7 @@ export default function EpochDetail({ analysisId, epoch, track, tMin, onSelect }
                     <td className="num mono">
                       {i === 0 ? "" : fmtDelta(r.t_us - packets.rows[i - 1].t_us)}
                     </td>
-                    <td className="num">{r.channel}</td>
+                    <td className="num">{r.channel ?? "—"}</td>
                     <td className="num">{r.rssi ?? "—"}</td>
                     <td>{r.pdu}</td>
                     <td className="mono">

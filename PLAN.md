@@ -176,8 +176,7 @@ clues fired); packet dissector; run controls.
 Resolved: Python engine + React/Vite web GUI (canvas + D3 timeline), built alongside · offline v1 · nRF Sniffer
 PCAP/pcapng only · **v1 = rule-based stitcher (no SimBle/Docker/ML/IRKs)** · **v2 = IRKs + ML on real data
 + confidence meter + accuracy** · large scale (100+, windowed solver, WebGL timeline) · clock-skew,
-self-capture & vault gated on hardware · host macOS/Windows/Pi, dev in this cloud session, delivered
-via GitHub.
+self-capture & vault gated on hardware · host macOS/Windows/Pi.
 
 Minor open assumption (non-blocking): v2 participant set is fixed & known (all IRKs held).
 ```

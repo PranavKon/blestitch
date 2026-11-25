@@ -10,6 +10,8 @@ Link types a BLE sniffer produces:
   hardware clock. This is what the project's nRF52840 hardware emits.
 * DLT 256 — ``LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR``: a 10-byte pseudo-header
   (RF channel, signal power, flags) followed by the BLE LL packet.
+* DLT 251 — ``LINKTYPE_BLUETOOTH_LE_LL``: the bare LL packet. It records no
+  channel, signal strength or CRC verdict, so packets from it carry none.
 
 The reader is pure stdlib (no scapy) so the hot path is small and predictable.
 It yields normalized :class:`~blestitch.records.Packet` objects and never
@@ -29,10 +31,12 @@ from blestitch.dissect.pdu import ADV_ACCESS_ADDRESS, parse_adv_pdu
 from blestitch.io.labeled_trace import CaptureStats, LabeledTrace
 from blestitch.records import Packet, classify_address
 
+DLT_BLUETOOTH_LE_LL = 251
 DLT_BLUETOOTH_LE_LL_WITH_PHDR = 256
 DLT_NORDIC_BLE = 272
 
 _LINK_NAMES = {
+    DLT_BLUETOOTH_LE_LL: "BLUETOOTH_LE_LL (251)",
     DLT_BLUETOOTH_LE_LL_WITH_PHDR: "BLUETOOTH_LE_LL_WITH_PHDR (256)",
     DLT_NORDIC_BLE: "NORDIC_BLE (272)",
 }
@@ -197,6 +201,8 @@ def _iter_packets(data: bytes, source: str, stats: CaptureStats) -> Iterator[Pac
             used_firmware_clock = True
         elif linktype == DLT_BLUETOOTH_LE_LL_WITH_PHDR:
             pkt = _parse_le_ll_phdr(body, ts_us, source, stats)
+        elif linktype == DLT_BLUETOOTH_LE_LL:
+            pkt = _parse_ble_ll(body, ts_us, None, None, source, stats)
         else:
             stats.n_unsupported_link += 1
             continue
@@ -209,7 +215,7 @@ def _iter_packets(data: bytes, source: str, stats: CaptureStats) -> Iterator[Pac
 
     if not seen_links and stats.n_unsupported_link:
         raise PcapFormatError(
-            "no BLE link-layer records; expected link type 256 or 272"
+            "no BLE link-layer records; expected link type 251, 256 or 272"
         )
 
 
@@ -305,16 +311,23 @@ def _parse_nordic(
         [4:6] packet counter   [6] packet id
         [7] event header length   [8] flags   [9] channel   [10] RSSI (negated)
         [11:13] event counter   [13:17] firmware timestamp / delta (us)
-        [17:] access address, PDU header, payload, CRC
+        then access address, PDU header, payload, CRC
+
+    The LL packet starts after the event header, whose length the record
+    states itself (10 in every firmware seen so far).
     """
     if len(body) < 17 + 6 or body[0:2] == b"\xbe\xef":
+        stats.n_malformed += 1
+        return None
+    event_len = body[7]
+    if event_len < 10 or len(body) < 7 + event_len + 6:
         stats.n_malformed += 1
         return None
     protover = body[3]
     counter = body[4] | (body[5] << 8)
     flags, channel = body[8], body[9]
     time_field = struct.unpack_from("<I", body, 13)[0]
-    ble = body[17:]
+    ble = body[7 + event_len :]
 
     phy = (flags >> 4) & 0x7
 
@@ -331,7 +344,7 @@ def _parse_nordic(
 def _parse_ble_ll(
     ble: bytes,
     t_us: int,
-    channel: int,
+    channel: int | None,
     rssi: int | None,
     source: str,
     stats: CaptureStats,

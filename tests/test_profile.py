@@ -128,3 +128,22 @@ def test_placeholder_company_id_is_not_named_as_a_vendor():
     (epoch,) = segment_epochs(list(iter_packets(build_pcap(records))))
     prof = build_profile(epoch)
     assert prof.company_id == 0 and prof.vendor is None
+
+
+def test_profile_without_channel_information():
+    # Link type 251 records no channel: the three packets of an event cannot
+    # be told apart, but the cadence can still be measured from event starts.
+    rng = random.Random(5)
+    bodies, t = [], 1_000_000
+    for _ in range(120):
+        for i in range(3):
+            bodies.append((t + i * 400, adv_ll(ADDR_B1, 1, ADV_IND, ADV_DATA_B)))
+        t += 100_000 + rng.randint(0, 10_000)
+    packets, _ = read_capture(build_pcap_raw(bodies, linktype=251))
+    (epoch,) = segment_epochs(packets)
+    prof = build_profile(epoch)
+    assert prof.channel_counts == {}
+    assert (prof.rssi_min, prof.rssi_mean, prof.rssi_max) == (None, None, None)
+    assert prof.n_events == 120
+    assert 103 < prof.adv_interval_ms < 107
+    assert prof.pdu_counts == {"ADV_IND": 360}

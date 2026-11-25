@@ -74,7 +74,7 @@ class Packet:
     """
 
     t_hw_us: int                 # hardware arrival timestamp, microseconds
-    channel: int                 # channel index: 37/38/39 primary, 0-36 secondary
+    channel: int | None          # channel index: 37/38/39 primary, 0-36 secondary; None if not recorded
     rssi: int | None             # dBm; None if the capture has no signal power
     address: int                 # 48-bit advertiser address (AdvA)
     addr_random: bool            # True if the advertiser address is random

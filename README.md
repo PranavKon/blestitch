@@ -54,8 +54,9 @@ Measuring accuracy needs ground truth (the devices' IRKs) and is v2.
 ## What it reads
 
 - **Containers:** `.pcap` and `.pcapng`, optionally gzip-compressed.
-- **Link types:** Nordic nRF Sniffer (DLT 272, protocol versions 1–3) and
-  `BLUETOOTH_LE_LL_WITH_PHDR` (DLT 256).
+- **Link types:** Nordic nRF Sniffer (DLT 272, protocol versions 1–3),
+  `BLUETOOTH_LE_LL_WITH_PHDR` (DLT 256) and bare `BLUETOOTH_LE_LL` (DLT 251,
+  which records no channel or signal strength).
 - **Timing:** nRF Sniffer packets are timed by the sniffer's hardware clock
   (unwrapped and anchored to capture time), not by the jittery host timestamps.
 - **Filtering:** packets that failed the sniffer's CRC check and connection

@@ -62,9 +62,10 @@ _EXT_SYNC_INFO = 0x20
 _EXT_TX_POWER = 0x40
 
 
-def pdu_type_name(pdu_type: int, channel: int = 37) -> str:
-    """Human-readable PDU name; `channel` disambiguates primary vs secondary."""
-    if channel < 37 and pdu_type in _SECONDARY_NAMES:
+def pdu_type_name(pdu_type: int, channel: int | None = 37) -> str:
+    """Human-readable PDU name; `channel` disambiguates primary vs secondary.
+    An unknown channel is taken to be a primary one."""
+    if channel is not None and channel < 37 and pdu_type in _SECONDARY_NAMES:
         return _SECONDARY_NAMES[pdu_type]
     return _PRIMARY_NAMES.get(pdu_type, f"RFU_{pdu_type:#x}")
 

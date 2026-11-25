@@ -220,3 +220,27 @@ def test_nordic_v2_falls_back_to_host_gap_when_a_record_is_missing():
     ]
     packets, _ = read_capture(build_pcapng([272], recs))
     assert packets[1].t_hw_us - HOST0 == 50_000
+
+
+# ---- bare LL (DLT 251) --------------------------------------------------
+
+
+def test_link_type_251_has_no_channel_or_signal():
+    ll = adv_ll(ADDR_A1, 1, ADV_IND, ADV_DATA_A)
+    packets, stats = read_capture(build_pcap_raw([(1_000_000, ll)], linktype=251))
+    (p,) = packets
+    assert (p.address, p.t_hw_us, p.payload) == (ADDR_A1, 1_000_000, ADV_DATA_A)
+    assert p.channel is None and p.rssi is None
+    assert stats.link_types == ["BLUETOOTH_LE_LL (251)"]
+    assert stats.time_source == "capture"
+
+
+def test_nordic_event_header_length_is_read_from_the_record():
+    ll = adv_ll(ADDR_A1, 1, ADV_IND, ADV_DATA_A)
+    rec = bytearray(nordic_record(ll, channel=38, rssi=-47))
+    # A longer event header: two extra bytes before the LL packet.
+    rec[7] = 12
+    rec[17:17] = b"\x00\x00"
+    rec[1:3] = (len(rec) - 7).to_bytes(2, "little")
+    packets, _ = read_capture(build_pcapng([272], [(0, HOST0, bytes(rec))]))
+    assert (packets[0].address, packets[0].channel, packets[0].rssi) == (ADDR_A1, 38, -47)

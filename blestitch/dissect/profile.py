@@ -82,7 +82,9 @@ def build_profile(epoch: AddressEpoch) -> EpochProfile:
     prof.pdu_counts = dict(
         Counter(pdu_type_name(p.pdu_type, p.channel) for p in pkts)
     )
-    prof.channel_counts = dict(sorted(Counter(p.channel for p in pkts).items()))
+    prof.channel_counts = dict(
+        sorted(Counter(p.channel for p in pkts if p.channel is not None).items())
+    )
 
     rssis = [p.rssi for p in pkts if p.rssi is not None]
     if rssis:
@@ -120,19 +122,34 @@ def estimate_adv_interval(
     divided by its nearest multiple before taking the median. Jitter is the median absolute deviation of single-interval
     gaps, which for a compliant advertiser reflects its 0–10 ms advDelay.
     """
-    adv = [p for p in pkts if p.pdu_type != PDU_SCAN_RSP and p.channel >= 37]
+    adv = [
+        p
+        for p in pkts
+        if p.pdu_type != PDU_SCAN_RSP and (p.channel is None or p.channel >= 37)
+    ]
 
     n_events = 0
     last_t: int | None = None
     seen: set[int] = set()
     gaps: list[int] = []
-    last_on_channel: dict[int, int] = {}
+    last_on_channel: dict[int | None, int] = {}
     for p in adv:
-        if last_t is None or p.t_hw_us - last_t > _EVENT_SPAN_US or p.channel in seen:
+        new_event = (
+            last_t is None
+            or p.t_hw_us - last_t > _EVENT_SPAN_US
+            or (p.channel is not None and p.channel in seen)
+        )
+        if new_event:
             n_events += 1
             seen = set()
-        seen.add(p.channel)
         last_t = p.t_hw_us
+        if p.channel is None:
+            # No channel recorded (link type 251): the packets of one event
+            # cannot be told apart, so only the first of each event is timed.
+            if not new_event:
+                continue
+        else:
+            seen.add(p.channel)
         prev = last_on_channel.get(p.channel)
         if prev is not None and p.t_hw_us > prev:
             gaps.append(p.t_hw_us - prev)
