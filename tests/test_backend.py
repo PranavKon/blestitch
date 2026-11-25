@@ -88,3 +88,21 @@ def test_only_recent_analyses_are_kept():
     for _ in range(backend_app.MAX_STORED_ANALYSES):
         _upload(make_capture())
     assert client.get(f"/api/analyses/{first}/epochs/0").status_code == 404
+
+
+def test_gui_is_served_when_built(tmp_path):
+    from fastapi import FastAPI
+
+    fresh = FastAPI()
+
+    @fresh.get("/api/health")
+    def health():
+        return {"status": "ok"}
+
+    assert backend_app.mount_gui(fresh, tmp_path) is False      # nothing built yet
+    (tmp_path / "index.html").write_text("<!doctype html><title>blestitch</title>")
+    assert backend_app.mount_gui(fresh, tmp_path) is True
+
+    c = TestClient(fresh)
+    assert "blestitch" in c.get("/").text
+    assert c.get("/api/health").json() == {"status": "ok"}      # the API still wins

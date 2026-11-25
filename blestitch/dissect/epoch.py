@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict
+from itertools import pairwise
 
 from blestitch.records import AddressEpoch, Packet
 
@@ -43,7 +44,7 @@ def segment_epochs(
         pkts.sort(key=lambda p: p.t_hw_us)
         runs: list[AddressEpoch] = []
         run: list[Packet] = [pkts[0]]
-        for prev, cur in zip(pkts, pkts[1:]):
+        for prev, cur in pairwise(pkts):
             if cur.t_hw_us - prev.t_hw_us > max_gap_us:
                 runs.append(_build_epoch(run))
                 run = [cur]
