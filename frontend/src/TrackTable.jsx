@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { fmtDuration, fmtOffset, fmtScore, trailName } from "./format.js";
+import { fmtDuration, fmtOffset, fmtScore } from "./format.js";
 import { TYPE_BY_KEY } from "./types.js";
 
 const COLUMNS = [
@@ -82,7 +82,7 @@ export default function TrackTable({ tracks, tMin, selectedId, onSelect }) {
                   }
                 }}
               >
-                <td>{trailName(t.id)}</td>
+                <td>{t.name}</td>
                 <td className="identity wide" title={t.label}>
                   {t.label || <span className="muted">—</span>}
                 </td>

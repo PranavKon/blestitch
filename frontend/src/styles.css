@@ -522,7 +522,7 @@ td.identity {
   padding: 5px 12px;
 }
 td.identity.wide {
-  max-width: 160px;
+  max-width: 140px;
 }
 .flag {
   margin-left: 8px;
@@ -711,4 +711,18 @@ table.clues {
   background: transparent;
   border-style: dashed;
   font-size: 13px;
+}
+
+.siblings {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.siblings li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
 }

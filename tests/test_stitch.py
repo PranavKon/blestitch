@@ -100,12 +100,48 @@ def test_address_types_do_not_mix():
     assert len(analyze_bytes(build_scenario(segments), source="t").stitched.tracks) == 2
 
 
+ANONYMOUS = bytes([0x02, 0x01, 0x06, 0x02, 0x0A, 0x04])   # flags + TX power: nothing identifying
+
+
 def test_a_late_arrival_is_not_a_rotation():
     segments = [
-        {"address": rpa(1), "start_s": 0, "stop_s": 30},
-        {"address": rpa(2), "start_s": 90, "stop_s": 120},
+        {"address": rpa(1), "start_s": 0, "stop_s": 30, "payload": ANONYMOUS},
+        {"address": rpa(2), "start_s": 90, "stop_s": 120, "payload": ANONYMOUS},
     ]
     assert len(analyze_bytes(build_scenario(segments), source="t").stitched.tracks) == 2
+
+
+def test_device_is_reidentified_after_a_long_silence():
+    # A sleeping device wakes for a few seconds every few minutes, each time
+    # under a new address, always announcing the same AirPlay address.
+    def airplay(last_octet):
+        mfr = bytes([0x4C, 0x00, 0x09, 0x06, 0x13, 0x95, 192, 168, 1, last_octet])
+        return bytes([0x02, 0x01, 0x1A, len(mfr) + 1, 0xFF]) + mfr
+
+    segments = [
+        {"address": rpa(1), "start_s": 0, "stop_s": 5, "payload": airplay(24)},
+        {"address": rpa(2), "start_s": 200, "stop_s": 205, "payload": airplay(24)},
+        {"address": rpa(3), "start_s": 900, "stop_s": 905, "payload": airplay(24)},
+        # a different device, with a different address, in between
+        {"address": rpa(4), "start_s": 400, "stop_s": 405, "payload": airplay(99)},
+    ]
+    analysis = analyze_bytes(build_scenario(segments), source="t")
+    assert _trails(analysis) == {frozenset({rpa(1), rpa(2), rpa(3)}), frozenset({rpa(4)})}
+    link = _rotations(analysis)[0]
+    carry = next(c for c in link.clues if c.name == "carryover")
+    assert carry.evidence == 1.0 and "192.168.1.24" in carry.detail
+    assert next(c for c in link.clues if c.name == "timing").evidence < 0.01
+
+
+def test_no_reidentification_on_content_two_devices_send_at_once():
+    # The same blob from two addresses at the same time is not an identifier.
+    blob = bytes([0x02, 0x01, 0x06, 0x09, 0x16, 0xED, 0xFE]) + bytes(range(1, 7))
+    segments = [
+        {"address": rpa(1), "start_s": 0, "stop_s": 20, "payload": blob, "rssi": -50},
+        {"address": rpa(2), "start_s": 0, "stop_s": 20, "payload": blob, "rssi": -80},
+        {"address": rpa(3), "start_s": 300, "stop_s": 320, "payload": blob, "rssi": -50},
+    ]
+    assert len(analyze_bytes(build_scenario(segments), source="t").stitched.tracks) == 3
 
 
 def test_overlapping_addresses_are_different_devices():
@@ -158,19 +194,69 @@ def test_same_address_seen_again_is_one_trail():
     assert link.kind == "same_address" and link.score == 1.0 and link.clues == []
 
 
-def test_indistinguishable_twins_are_flagged_ambiguous():
-    common = {"interval_ms": 300, "rssi": -60, "payload": apple_adv(bytes([1, 2, 3]))}
+def test_two_addresses_sending_the_same_content_at_once_are_one_device():
+    # One device, two advertising sets: both addresses carry the same Nearby
+    # Info at the same time and rotate together.
+    def twin(tag):
+        return {"interval_ms": 300, "rssi": -60, "payload": apple_adv(bytes(tag))}
+
     segments = [
-        dict(address=rpa(1), start_s=0, stop_s=40, **common),
-        dict(address=rpa(2), start_s=0, stop_s=40, **common),
-        dict(address=rpa(3), start_s=40.5, stop_s=80, **common),
-        dict(address=rpa(4), start_s=40.5, stop_s=80, **common),
+        {"address": rpa(1), "start_s": 0, "stop_s": 40, **twin([1, 2, 3])},
+        {"address": rpa(2), "start_s": 0, "stop_s": 40, **twin([1, 2, 3])},
+        {"address": rpa(3), "start_s": 40.5, "stop_s": 80, **twin([7, 8, 9])},
+        {"address": rpa(4), "start_s": 40.5, "stop_s": 80, **twin([7, 8, 9])},
+        # an unrelated phone elsewhere in the room
+        {"address": rpa(5), "start_s": 0, "stop_s": 80, "interval_ms": 300, "rssi": -80,
+         "payload": apple_adv(bytes([4, 4, 4]))},
     ]
     analysis = analyze_bytes(build_scenario(segments), source="twins")
+    result = analysis.result
+    assert len(result.tracks) == 3 and result.n_devices == 2
+
+    twins = [t for t in result.tracks if t.n_addresses == 2]
+    assert [t.name for t in twins] == ["D1a", "D1b"]
+    assert twins[0].device_id == twins[1].device_id
+    assert result.tracks[2].name == "D2"
+    (sibling,) = result.siblings
+    assert (sibling.track_a, sibling.track_b) == (0, 1)
+    assert "Nearby Info" in sibling.detail
+
+    # Which twin follows which is arbitrary, and does not matter: both
+    # choices describe the same device, so neither link is ambiguous.
+    links = _rotations(analysis)
+    assert len(links) == 2
+    assert not any(link.ambiguous for link in links)
+
+
+def test_siblings_must_be_at_the_same_signal_strength():
+    payload = apple_adv(bytes([1, 2, 3]))
+    segments = [
+        {"address": rpa(1), "start_s": 0, "stop_s": 40, "rssi": -45, "payload": payload},
+        {"address": rpa(2), "start_s": 0, "stop_s": 40, "rssi": -75, "payload": payload},
+    ]
+    result = analyze_bytes(build_scenario(segments), source="t").result
+    assert result.n_devices == 2 and result.siblings == []
+
+
+def test_indistinguishable_devices_are_flagged_ambiguous():
+    # Two trackers side by side with different keys rotate together: nothing
+    # says which new address belongs to which.
+    def tracker(key_byte):
+        return {"interval_ms": 1000, "rssi": -60, "pdu": ADV_NONCONN_IND,
+                "payload": find_my_adv(bytes([key_byte]) * 22)}
+
+    segments = [
+        {"address": static_addr(1), "start_s": 0, "stop_s": 60, **tracker(1)},
+        {"address": static_addr(2), "start_s": 0, "stop_s": 60, **tracker(2)},
+        {"address": static_addr(3), "start_s": 60.5, "stop_s": 120, **tracker(3)},
+        {"address": static_addr(4), "start_s": 60.5, "stop_s": 120, **tracker(4)},
+    ]
+    analysis = analyze_bytes(build_scenario(segments), source="t")
     links = _rotations(analysis)
     assert len(links) == 2                       # each old address gets one successor
     assert all(link.ambiguous for link in links)
     assert all(t.ambiguous for t in analysis.result.tracks)
+    assert analysis.result.n_devices == 2
 
 
 def test_accept_line_is_configurable():
@@ -204,3 +290,35 @@ def test_artifact_carries_trails_and_links():
     assert {c.name for c in link.clues} >= {"timing", "structure", "cadence", "signal"}
     assert abs(sum(c.contribution for c in link.clues) - link.total) < 0.01
     json.dumps(result.to_dict())
+
+
+def test_result_does_not_depend_on_hash_order():
+    # Tokens live in sets, whose order changes from run to run. The result,
+    # including the wording of each clue, must not change with it.
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = (
+        "import hashlib, json, sys\n"
+        "sys.path.insert(0, 'tests')\n"
+        "import fixtures\n"
+        "from blestitch.pipeline import analyze_bytes\n"
+        "capture, _ = fixtures.make_rotation_capture(minutes=3)\n"
+        "result = analyze_bytes(capture, source='t').result.to_dict()\n"
+        "print(hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest())\n"
+    )
+    root = Path(__file__).resolve().parent.parent
+    digests = {
+        subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=root,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for seed in ("1", "2", "3")
+    }
+    assert len(digests) == 1

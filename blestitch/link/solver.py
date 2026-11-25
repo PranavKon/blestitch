@@ -10,6 +10,12 @@ line.
 Epochs that share an address are the same device by definition and are merged
 before any of this; what gets linked are *addresses*.
 
+Two refinements sit around the core assignment. A device that fell silent and
+came back much later can be re-identified if both addresses carry the same
+identifier-grade content. And trails that were on air together sending the
+same such content are *siblings* — one device using several addresses at once
+— and are grouped into a device.
+
 The candidate graph falls apart into small independent groups (only addresses
 that were on air around the same moment compete), and each group is solved
 exactly with the Hungarian algorithm, which keeps long captures cheap.
@@ -26,7 +32,14 @@ from scipy.optimize import linear_sum_assignment
 from blestitch.dissect.profile import EpochProfile
 from blestitch.features.summary import EpochFeatures, build_features
 from blestitch.features.tokens import Token
-from blestitch.link.heuristic import MatcherConfig, gap_allowed, score_handoff, to_score
+from blestitch.link.heuristic import (
+    MatcherConfig,
+    gap_allowed,
+    identifying_tokens,
+    score_handoff,
+    to_score,
+)
+from blestitch.link.siblings import Sibling, find_siblings, group_devices
 from blestitch.records import AddressEpoch, AddrType, DeviceTrack, Link
 
 
@@ -45,6 +58,8 @@ class StitchResult:
     tracks: list[DeviceTrack] = field(default_factory=list)
     links: list[Link] = field(default_factory=list)
     track_of_epoch: list[int] = field(default_factory=list)
+    siblings: list[Sibling] = field(default_factory=list)
+    device_of_track: list[int] = field(default_factory=list)
 
 
 def stitch(
@@ -59,22 +74,53 @@ def stitch(
 
     candidates = _score_candidates(addresses, features, rarity, cfg)
     chosen = _solve(candidates, len(addresses))
-    _set_margins(chosen, candidates)
-
-    links = _same_address_links(addresses, epochs) + chosen
-    links.sort(key=lambda link: epochs[link.b].t_start_us)
-
-    # `chosen` links refer to address indices until here; rewrite to epoch ids.
     successor = {link.a: link.b for link in chosen}
-    for link in chosen:
-        link.a, link.b = addresses[link.a].epoch_ids[-1], addresses[link.b].epoch_ids[0]
 
     tracks = _build_tracks(addresses, successor)
     track_of_epoch = [0] * len(epochs)
     for track in tracks:
         for epoch_id in track.epoch_ids:
             track_of_epoch[epoch_id] = track.id
-    return StitchResult(tracks=tracks, links=links, track_of_epoch=track_of_epoch)
+
+    siblings = find_siblings(epochs, features, rarity, track_of_epoch)
+    device_of_track = group_devices(len(tracks), siblings)
+    tracks, track_of_epoch, siblings, device_of_track = _order_by_device(
+        tracks, track_of_epoch, siblings, device_of_track
+    )
+
+    device_of_address = [
+        device_of_track[track_of_epoch[a.epoch_ids[0]]] for a in addresses
+    ]
+    _set_margins(chosen, candidates, device_of_address)
+
+    # `chosen` links refer to address indices until here; rewrite to epoch ids.
+    for link in chosen:
+        link.a, link.b = addresses[link.a].epoch_ids[-1], addresses[link.b].epoch_ids[0]
+    links = _same_address_links(addresses, epochs) + chosen
+    links.sort(key=lambda link: epochs[link.b].t_start_us)
+
+    return StitchResult(
+        tracks=tracks,
+        links=links,
+        track_of_epoch=track_of_epoch,
+        siblings=siblings,
+        device_of_track=device_of_track,
+    )
+
+
+def _order_by_device(tracks, track_of_epoch, siblings, device_of_track):
+    """Renumber tracks so that the trails of one device sit together."""
+    order = sorted(range(len(tracks)), key=lambda t: (device_of_track[t], t))
+    new_id = {old: new for new, old in enumerate(order)}
+    tracks = [DeviceTrack(id=new_id[t], epoch_ids=tracks[t].epoch_ids) for t in order]
+    for s in siblings:
+        s.track_a, s.track_b = sorted((new_id[s.track_a], new_id[s.track_b]))
+    return (
+        tracks,
+        [new_id[t] for t in track_of_epoch],
+        sorted(siblings, key=lambda s: (s.track_a, s.track_b)),
+        [device_of_track[t] for t in order],
+    )
 
 
 def _group_by_address(epochs: list[AddressEpoch]) -> list[_Address]:
@@ -131,36 +177,57 @@ def _score_candidates(
 ) -> list[Link]:
     """Every allowed (earlier address -> later address) pair, scored.
     `Link.a` / `Link.b` hold *address indices* at this stage."""
-    out: list[Link] = []
-    # Addresses are sorted by start; a successor starts no earlier than the
-    # predecessor ends (minus slack), so scan forward from each one.
+    pairs: set[tuple[int, int]] = set()
+
+    # Ordinary handoffs: B is first heard soon after A's last packet.
+    # Addresses are sorted by start, so scan forward from each one.
     by_start = sorted(range(len(addresses)), key=lambda i: addresses[i].t_start_us)
     for a_idx, a in enumerate(addresses):
-        if a.addr_type is AddrType.PUBLIC:
-            continue  # a public address never rotates
         fa = features[a.epoch_ids[-1]]
         for b_idx in by_start:
             b = addresses[b_idx]
             gap = b.t_start_us - a.t_end_us
             if gap > cfg.max_gap_ceiling_us:
                 break
-            if b_idx == a_idx or b.addr_type is not a.addr_type:
-                continue
-            fb = features[b.epoch_ids[0]]
-            if not gap_allowed(gap, fa, fb, cfg):
-                continue
-            total, clues = score_handoff(gap, fa, fb, rarity, cfg)
-            out.append(
-                Link(
-                    a=a_idx,
-                    b=b_idx,
-                    kind="rotation",
-                    gap_us=gap,
-                    total=round(total, 3),
-                    score=round(to_score(total, cfg), 3),
-                    clues=clues,
-                )
+            if gap_allowed(gap, fa, features[b.epoch_ids[0]], cfg):
+                pairs.add((a_idx, b_idx))
+
+    # Re-identification: any later address carrying the same identifier-grade
+    # token, however long the silence. Found through a token index so the
+    # cost does not grow with the square of the capture.
+    holders: dict[Token, list[int]] = defaultdict(list)
+    for idx, addr in enumerate(addresses):
+        ends = features[addr.epoch_ids[0]].tokens | features[addr.epoch_ids[-1]].tokens
+        for token in ends:
+            holders[token].append(idx)
+    for a_idx, a in enumerate(addresses):
+        for token in identifying_tokens(features[a.epoch_ids[-1]], rarity, cfg):
+            for b_idx in holders[token]:
+                gap = addresses[b_idx].t_start_us - a.t_end_us
+                if -cfg.max_overlap_us <= gap <= cfg.reid_max_gap_us:
+                    pairs.add((a_idx, b_idx))
+
+    out: list[Link] = []
+    for a_idx, b_idx in sorted(pairs):
+        a, b = addresses[a_idx], addresses[b_idx]
+        # A public address never rotates, and a device keeps its address type.
+        if a_idx == b_idx or a.addr_type is AddrType.PUBLIC or b.addr_type is not a.addr_type:
+            continue
+        gap = b.t_start_us - a.t_end_us
+        total, clues = score_handoff(
+            gap, features[a.epoch_ids[-1]], features[b.epoch_ids[0]], rarity, cfg
+        )
+        out.append(
+            Link(
+                a=a_idx,
+                b=b_idx,
+                kind="rotation",
+                gap_us=gap,
+                total=round(total, 3),
+                score=round(to_score(total, cfg), 3),
+                clues=clues,
             )
+        )
     return out
 
 
@@ -209,15 +276,22 @@ def _solve(candidates: list[Link], n_addresses: int) -> list[Link]:
     return chosen
 
 
-def _set_margins(chosen: list[Link], candidates: list[Link]) -> None:
-    """How far each chosen link's total is ahead of its best rival: any other
-    candidate that wanted the same predecessor or the same successor."""
+def _set_margins(
+    chosen: list[Link], candidates: list[Link], device_of_address: list[int]
+) -> None:
+    """How far each chosen link's total is ahead of its best rival: another
+    candidate that wanted the same predecessor or the same successor.
+
+    A rival that only swaps in a sibling address of the same device is not a
+    rival at all — either choice describes the same device — so it is ignored.
+    """
     for link in chosen:
-        rivals = [
-            c.total
-            for c in candidates
-            if c is not link and (c.a == link.a or c.b == link.b)
-        ]
+        rivals = []
+        for c in candidates:
+            if c is link:
+                continue
+            if c.a == link.a and device_of_address[c.b] != device_of_address[link.b] or c.b == link.b and device_of_address[c.a] != device_of_address[link.a]:
+                rivals.append(c.total)
         link.margin = round(link.total - max(rivals), 3) if rivals else None
 
 

@@ -120,3 +120,11 @@ def test_interval_estimate_when_most_events_are_missed():
         t += 185_000 + rng.randint(0, 2_000)
     _, interval, _ = estimate_adv_interval(list(iter_packets(build_pcap(records))))
     assert 184 < interval < 188
+
+
+def test_placeholder_company_id_is_not_named_as_a_vendor():
+    adv = bytes([0x02, 0x01, 0x06, 0x05, 0xFF, 0x00, 0x00, 0x01, 0x02])
+    records = [(1_000_000 + i * 100_000, 37, -60, ADDR_B1, 1, ADV_IND, adv) for i in range(3)]
+    (epoch,) = segment_epochs(list(iter_packets(build_pcap(records))))
+    prof = build_profile(epoch)
+    assert prof.company_id == 0 and prof.vendor is None

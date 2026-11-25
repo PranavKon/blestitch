@@ -79,11 +79,6 @@ export function fmtTick(seconds, step) {
 
 // ---- stitching ---------------------------------------------------------
 
-// Trails are numbered from 1 for people; ids are 0-based.
-export function trailName(trackId) {
-  return `D${trackId + 1}`;
-}
-
 // The matcher's score is a ranking aid, not a probability, so it is shown
 // with a word as well as a number.
 export function scoreWord(score) {

@@ -168,6 +168,8 @@ class TrackView:
     """One stitched device trail."""
 
     id: int
+    name: str                 # "D3", or "D3a"/"D3b" when a device has several trails
+    device_id: int            # trails of one device share this
     epoch_ids: list[int]
     label: str
     addr_type: str
@@ -178,6 +180,16 @@ class TrackView:
     n_rotations: int
     min_score: float | None   # weakest rotation link; None if it never rotated
     ambiguous: bool           # some rotation link has a close rival
+
+
+@dataclass(slots=True)
+class SiblingView:
+    """Two trails judged to be one device using two addresses at once."""
+
+    track_a: int
+    track_b: int
+    n_shared: int
+    detail: str
 
 
 @dataclass(slots=True)
@@ -193,6 +205,8 @@ class AnalysisResult:
     capture: CaptureStats = field(default_factory=CaptureStats)
     tracks: list[TrackView] = field(default_factory=list)
     links: list[LinkView] = field(default_factory=list)
+    siblings: list[SiblingView] = field(default_factory=list)
+    n_devices: int = 0
     # The matcher settings these trails were produced with.
     matcher: MatcherConfig = field(default_factory=MatcherConfig)
     schema_version: int = SCHEMA_VERSION
@@ -219,7 +233,7 @@ class AnalysisResult:
             for i, (e, p) in enumerate(zip(epochs, profiles))
         ]
         matcher = matcher or MatcherConfig()
-        tracks, links = _stitch_views(views, stitched, matcher)
+        tracks, links, siblings = _stitch_views(views, stitched, matcher)
         return cls(
             source=source,
             n_packets=n_packets,
@@ -231,6 +245,8 @@ class AnalysisResult:
             capture=capture or CaptureStats(n_packets=n_packets),
             tracks=tracks,
             links=links,
+            siblings=siblings,
+            n_devices=len({t.device_id for t in tracks}),
             matcher=matcher,
         )
 
@@ -243,14 +259,21 @@ class AnalysisResult:
 
 def _stitch_views(
     views: list[EpochView], stitched: StitchResult | None, cfg: MatcherConfig
-) -> tuple[list[TrackView], list[LinkView]]:
+) -> tuple[list[TrackView], list[LinkView], list[SiblingView]]:
     """Without a stitch result every epoch is its own one-epoch trail."""
     if stitched is None:
         groups = [[v.id] for v in views]
         raw_links: list[Link] = []
+        device_of = list(range(len(groups)))
+        siblings: list[SiblingView] = []
     else:
         groups = [t.epoch_ids for t in stitched.tracks]
         raw_links = stitched.links
+        device_of = stitched.device_of_track
+        siblings = [
+            SiblingView(s.track_a, s.track_b, s.n_shared, s.detail)
+            for s in stitched.siblings
+        ]
 
     track_of: dict[int, int] = {}
     for track_id, epoch_ids in enumerate(groups):
@@ -267,6 +290,7 @@ def _stitch_views(
         if link.kind == "rotation":
             rotations.setdefault(link.track_id, []).append(link)
 
+    names = _trail_names(device_of)
     tracks = []
     for track_id, epoch_ids in enumerate(groups):
         members = [views[i] for i in epoch_ids]
@@ -274,6 +298,8 @@ def _stitch_views(
         tracks.append(
             TrackView(
                 id=track_id,
+                name=names[track_id],
+                device_id=device_of[track_id],
                 epoch_ids=epoch_ids,
                 label=_track_label(members),
                 addr_type=members[0].addr_type,
@@ -286,7 +312,32 @@ def _stitch_views(
                 ambiguous=any(link.ambiguous for link in rot),
             )
         )
-    return tracks, links
+    return tracks, links, siblings
+
+
+def _trail_names(device_of: list[int]) -> list[str]:
+    """D1, D2, … per device; D3a, D3b, … when a device has several trails."""
+    size: dict[int, int] = {}
+    for d in device_of:
+        size[d] = size.get(d, 0) + 1
+    seen: dict[int, int] = {}
+    names = []
+    for d in device_of:
+        n = seen.get(d, 0)
+        seen[d] = n + 1
+        suffix = _letters(n) if size[d] > 1 else ""
+        names.append(f"D{d + 1}{suffix}")
+    return names
+
+
+def _letters(n: int) -> str:
+    """0 -> a, 25 -> z, 26 -> aa."""
+    out = ""
+    n += 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        out = chr(ord("a") + r) + out
+    return out
 
 
 def _track_label(members: list[EpochView]) -> str:

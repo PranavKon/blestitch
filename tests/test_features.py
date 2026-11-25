@@ -9,7 +9,12 @@ from blestitch.features.counters import (
     extract_counters,
 )
 from blestitch.features.summary import EpochFeatures
-from blestitch.features.tokens import NAME, describe_token, extract_tokens
+from blestitch.features.tokens import (
+    NAME,
+    describe_token,
+    extract_tokens,
+    token_strength,
+)
 
 
 def test_tokens_are_whole_fields_keyed_by_origin():
@@ -117,3 +122,13 @@ def test_counter_clue():
     assert pairwise.counter(a, _f(counters={HANDOFF: (b"\x80\x00", b"\x80\x01")})).value == -0.5
     assert pairwise.counter(a, _f()) is None
     assert ADV_DATA_B  # fixtures import used
+
+
+def test_token_strength_counts_informative_bytes():
+    assert token_strength(("apple:airplay-ip", bytes([192, 168, 1, 20]))) == 1.0
+    assert token_strength(("ad:0a", b"\x04")) == 0.25
+    # a long bitmap with two bits set says little
+    assert token_strength(("apple:01", bytes(8) + b"\x40" + bytes(6) + b"\x10")) == 0.5
+    assert token_strength((NAME, b"Band-42")) == 1.0
+    assert token_strength((NAME, b"BB")) == 0.5
+    assert token_strength(("svc:feed", b"\x01\x02\x03\x04"), sharers=2) == 0.5

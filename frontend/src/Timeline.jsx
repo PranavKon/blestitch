@@ -11,7 +11,6 @@ import {
   fmtScore,
   fmtTick,
   timeTicks,
-  trailName,
 } from "./format.js";
 import { oneLaneEach, packLanes, trailLanes } from "./lanes.js";
 import { TYPE_BY_KEY, typeColor } from "./types.js";
@@ -20,7 +19,7 @@ const ROW_H = 22;
 const BAR_H = 14;
 const AXIS_H = 28;
 const PAD_X = 14;
-const GUTTER_W = 38; // trail names, in trail mode only
+const GUTTER_W = 46; // trail names, in trail mode only
 const MIN_BAR_W = 3;
 const MAX_VIEW_H = 460;
 const LABEL_MIN_W = 64;
@@ -373,11 +372,11 @@ export default function Timeline({ epochs, tracks, links, tMin, tMax, selection,
         const id = lanes[i].trackId;
         const active = is("track", id) || hovered("track", id);
         ctx.fillStyle = active ? INK : MUTED;
-        ctx.fillText(trailName(id), PAD_X - 4, rowY(i) + BAR_H / 2 + 0.5);
+        ctx.fillText(tracks[id].name, PAD_X - 6, rowY(i) + BAR_H / 2 + 0.5);
       }
       ctx.restore();
     }
-  }, [lanes, laneLinks, xScale, width, viewH, scrollTop, selKey, hoverKey, tMin, left, trailMode]);
+  }, [lanes, laneLinks, tracks, xScale, width, viewH, scrollTop, selKey, hoverKey, tMin, left, trailMode]);
 
   const zoomed = transform.k > 1.0001;
   const nRotations = links.filter((l) => l.kind === "rotation").length;
@@ -471,7 +470,7 @@ function Tooltip({ hover, tMin, maxX }) {
   if (hover.kind === "track") {
     return (
       <div className="tooltip" style={style}>
-        <div className="tt-title">Trail {trailName(item.id)}</div>
+        <div className="tt-title">Trail {item.name}</div>
         {item.label && <div className="tt-label">{item.label}</div>}
         <dl>
           <dt>Addresses</dt>

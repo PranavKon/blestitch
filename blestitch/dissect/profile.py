@@ -29,6 +29,7 @@ from blestitch.records import (
 # PDUs of one advertising event are at most 10 ms apart (Vol 6, Part B §4.4.2).
 _EVENT_SPAN_US = 10_000
 _MIN_INTERVAL_SAMPLES = 3
+_PLACEHOLDER_COMPANY_IDS = (0x0000, 0xFFFF)
 _MAX_PERIOD_DIVISOR = 6
 _MIN_PERIOD_US = 20_000       # the shortest legal advertising interval
 _PERIOD_TOLERANCE = 0.12      # how far from a whole multiple a gap may sit
@@ -210,7 +211,9 @@ def _describe(prof: EpochProfile, pkts: list[Packet]) -> None:
         merged.appearance = merged.appearance or s.appearance
 
     prof.company_id = merged.company_id
-    if merged.company_id is not None:
+    # 0x0000 and 0xFFFF are what unregistered firmware puts in the company
+    # field; naming their nominal owners would mislabel the device.
+    if merged.company_id not in (None, *_PLACEHOLDER_COMPANY_IDS):
         prof.vendor = vendors.short_company_name(merged.company_id)
     prof.local_name = merged.local_name
     prof.service_uuids = merged.service_uuids

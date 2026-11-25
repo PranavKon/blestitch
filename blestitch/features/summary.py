@@ -70,7 +70,7 @@ def build_features(epoch: AddressEpoch, profile: EpochProfile) -> EpochFeatures:
     f.type_sequences = frozenset(sequences)
     f.tokens = frozenset(tokens)
 
-    names = [value for kind, value in tokens if kind == NAME]
+    names = sorted(value for kind, value in tokens if kind == NAME)
     f.name = max(names, key=len) if names else None
     return f
 

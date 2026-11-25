@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from blestitch.features.counters import continues
 from blestitch.features.summary import EpochFeatures
-from blestitch.features.tokens import NAME, Token, describe_token
+from blestitch.features.tokens import Token, describe_token, token_strength
 
 # Evidence shape parameters. These are judgement calls, tuned against the
 # rotation fixture and a real household capture; M4 exposes the important
@@ -21,7 +21,6 @@ from blestitch.features.tokens import NAME, Token, describe_token
 _MIN_TIMING_SCALE_US = 2_000_000
 _CADENCE_ZERO_AT = 0.025      # relative interval difference giving no evidence
 _RSSI_ZERO_AT_DB = 8.0        # seam RSSI jump giving no evidence
-_TOKEN_FULL_BYTES = 4         # tokens this long count in full
 _CARRYOVER_FLOOR = 0.2        # weaker shared content is treated as none
 
 
@@ -87,8 +86,10 @@ def carryover(
     shared = a.tokens & b.tokens
     if not shared:
         return None
-    strength = {t: _token_strength(t, rarity.get(t, 1)) for t in shared}
-    best = max(strength, key=strength.get)
+    strength = {t: token_strength(t, rarity.get(t, 1)) for t in shared}
+    # Name the strongest token; break ties the same way every run (shortest
+    # value first, so a bare address is named rather than the blob around it).
+    best = min(strength, key=lambda t: (-strength[t], len(t[1]), t))
     miss = 1.0
     for s in strength.values():
         miss *= 1.0 - s
@@ -102,12 +103,6 @@ def carryover(
         else f"also sent by up to {sharers} addresses at once"
     )
     return Evidence(value, f"unchanged {describe_token(best)}, {uniqueness}")
-
-
-def _token_strength(token: Token, sharers: int) -> float:
-    kind, value = token
-    size = 1.0 if kind == NAME else min(1.0, len(value) / _TOKEN_FULL_BYTES)
-    return size / max(1, sharers)
 
 
 def counter(a: EpochFeatures, b: EpochFeatures) -> Evidence | None:

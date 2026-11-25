@@ -1,10 +1,13 @@
 import React from "react";
 
-import { fmtDuration, fmtOffset, fmtScore, trailName } from "./format.js";
+import { fmtDuration, fmtOffset, fmtScore } from "./format.js";
+
+// A gap this long is a device returning, not an address simply rotating.
+const LONG_GAP_US = 30_000_000;
 
 // Why two addresses were joined: every clue the matcher weighed, how hard it
 // pushed and in which direction.
-export default function LinkDetail({ link, epochs, tMin, acceptTotal, onSelect }) {
+export default function LinkDetail({ link, track, epochs, tMin, acceptTotal, onSelect }) {
   const [a, b] = [epochs[link.a], epochs[link.b]];
   const clues = [...link.clues].sort((x, y) => Math.abs(y.contribution) - Math.abs(x.contribution));
   return (
@@ -12,7 +15,7 @@ export default function LinkDetail({ link, epochs, tMin, acceptTotal, onSelect }
       <div className="panel-head">
         <h2>{link.kind === "rotation" ? "Rotation link" : "Same address seen again"}</h2>
         <button className="chip" onClick={() => onSelect({ kind: "track", id: link.track_id })}>
-          Trail {trailName(link.track_id)}
+          Trail {track.name}
         </button>
       </div>
 
@@ -36,7 +39,14 @@ export default function LinkDetail({ link, epochs, tMin, acceptTotal, onSelect }
               <span className="muted"> · accepted above 0.50</span>
             </dd>
             <dt>Gap</dt>
-            <dd>{fmtDuration(Math.max(0, link.gap_us))}</dd>
+            <dd>
+              {fmtDuration(Math.max(0, link.gap_us))}
+              {link.gap_us > LONG_GAP_US && (
+                <span className="muted">
+                  {" "}· the device went quiet and came back; linked by what it kept sending
+                </span>
+              )}
+            </dd>
             <dt>Rivals</dt>
             <dd>
               {link.margin == null

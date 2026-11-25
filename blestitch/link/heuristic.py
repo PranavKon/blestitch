@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from blestitch.features import pairwise
 from blestitch.features.summary import EpochFeatures
-from blestitch.features.tokens import Token
+from blestitch.features.tokens import Token, token_strength
 from blestitch.records import Clue
 
 
@@ -28,6 +28,13 @@ class MatcherConfig:
     # B may start this much before A's last packet (timestamp slack only: a
     # device does not send under its old and new address at once).
     max_overlap_us: int = 50_000
+
+    # Re-identification: a device that went quiet (asleep, out of range) and
+    # came back under a new address can still be linked, however long the
+    # silence, if both addresses carry the same identifier-grade content — a
+    # token at least this strong that no other address was sending.
+    reid_min_strength: float = 0.9
+    reid_max_gap_us: int = 3_600_000_000
 
     weight_timing: float = 1.0
     weight_structure: float = 2.0
@@ -47,6 +54,15 @@ def gap_allowed(gap_us: int, a: EpochFeatures, b: EpochFeatures, cfg: MatcherCon
         return False
     stretch = cfg.max_gap_in_observed_gaps * max(a.observed_gap_us, b.observed_gap_us)
     return gap_us <= max(cfg.max_gap_us, min(cfg.max_gap_ceiling_us, stretch))
+
+
+def identifying_tokens(
+    f: EpochFeatures, rarity: dict[Token, int], cfg: MatcherConfig
+) -> set[Token]:
+    """The tokens of an epoch strong and rare enough to act as an identifier."""
+    return {
+        t for t in f.tokens if token_strength(t, rarity.get(t, 1)) >= cfg.reid_min_strength
+    }
 
 
 def score_handoff(

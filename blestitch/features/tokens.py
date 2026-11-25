@@ -60,6 +60,22 @@ def _apple_tokens(data: bytes) -> set[Token]:
     return tokens
 
 
+# A token counts in full once it has this many informative bytes.
+_FULL_STRENGTH_BYTES = 4
+
+
+def token_strength(token: Token, sharers: int = 1) -> float:
+    """How close a token is to an identifier, 0..1.
+
+    Length alone overstates it: a 16-byte bitmap with one bit set carries
+    almost nothing. So only non-zero bytes count. The result is divided by
+    `sharers`, the number of addresses seen sending the token at one moment.
+    """
+    kind, value = token
+    informative = len(value) if kind == NAME else sum(b != 0 for b in value)
+    return min(1.0, informative / _FULL_STRENGTH_BYTES) / max(1, sharers)
+
+
 def describe_token(token: Token) -> str:
     """A short label for a token, for clue details."""
     kind, value = token

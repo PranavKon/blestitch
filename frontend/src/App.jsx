@@ -224,6 +224,7 @@ function Detail({ result, selection, onSelect }) {
     return (
       <LinkDetail
         link={result.links[selection.id]}
+        track={result.tracks[result.links[selection.id].track_id]}
         epochs={result.epochs}
         tMin={tMin}
         acceptTotal={result.matcher.accept_total}
@@ -235,6 +236,8 @@ function Detail({ result, selection, onSelect }) {
     return (
       <TrackDetail
         track={result.tracks[selection.id]}
+        tracks={result.tracks}
+        siblings={result.siblings}
         epochs={result.epochs}
         links={result.links}
         tMin={tMin}
@@ -265,6 +268,7 @@ function Summary({ result }) {
   return (
     <>
       <section className="summary">
+        <Stat label="Devices (estimated)" value={fmtInt(result.n_devices)} />
         <Stat label="Device trails" value={fmtInt(result.tracks.length)} />
         <Stat label="Address epochs" value={fmtInt(result.n_epochs)} />
         <Stat

@@ -39,6 +39,15 @@ then picks links **jointly** — one successor and one predecessor per address �
 so that several devices rotating at the same instant are resolved together
 rather than greedily. Links with a close rival are flagged *ambiguous*.
 
+Two refinements came out of real captures:
+
+- **Re-identification.** A device that goes quiet (asleep, out of range) and
+  returns later under a new address is still linked if both addresses carry
+  the same identifier-grade content that no other address was sending.
+- **Sibling trails.** Some devices use two addresses *at once* with identical
+  content. Trails on air together, at the same signal strength, sending the
+  same such content are grouped into one device (`D3a`, `D3b`).
+
 The score is a ranking aid from fixed rules, **not a calibrated probability**.
 Measuring accuracy needs ground truth (the devices' IRKs) and is v2.
 
@@ -67,7 +76,8 @@ blestitch/      pure-Python engine (no UI deps)
   io/           capture reader (pcap/pcapng; DLT 256 / Nordic 272), LabeledTrace seam
   dissect/      PDU + AD parsing, vendor decoders, epoch segmentation, epoch profiles
   features/     per-epoch features, tokens, counters, the pairwise clues
-  link/         rule-based matcher (heuristic.py) and global solver (solver.py)
+  link/         rule-based matcher (heuristic.py), global solver (solver.py),
+                concurrent-address grouping (siblings.py)
   results/      structured JSON artifact (engine ↔ GUI seam)
   data/         vendored Bluetooth company / service identifiers (see NOTICE)
   eval/ vault/  (filled in later milestones)

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { fetchEpochDetail, fetchEpochPackets } from "./api.js";
-import { fmtClock, fmtDuration, fmtMs, fmtOffset, hexBytes, trailName } from "./format.js";
+import { fmtClock, fmtDuration, fmtMs, fmtOffset, hexBytes } from "./format.js";
 import { TYPE_BY_KEY } from "./types.js";
 
 const PACKET_PAGE = 200;
@@ -56,7 +56,7 @@ export default function EpochDetail({ analysisId, epoch, track, tMin, onSelect }
         <span className={`tag tag-${epoch.addr_type}`}>{type?.label ?? epoch.addr_type}</span>
         {track && (
           <button className="chip" onClick={() => onSelect({ kind: "track", id: track.id })}>
-            Trail {trailName(track.id)}
+            Trail {track.name}
             {track.n_addresses > 1 && ` · ${track.n_addresses} addresses`}
           </button>
         )}

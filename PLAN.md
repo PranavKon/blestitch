@@ -144,13 +144,21 @@ markers, trail table, link drilldown showing each clue's contribution.
 - Devices **restart their advertising train at rotation**: the new address does not continue the old
   timing grid, so "phase continuity" is not a usable clue. The interval itself is stable.
 - **One device can advertise under several addresses at once** (seen: two addresses with identical
-  payloads changing at identical moments, rotating together). Trails are per *address chain*; such
-  twins are currently separate trails and their rotation links are flagged ambiguous.
-  **Open:** merge concurrent twins into one device.
+  payloads changing at identical moments, rotating together). Trails are per *address chain*.
 - Weak devices are heard on one channel and rarely; the interval estimator had to find the
   fundamental period under heavy loss, and the timing clue is judged against how often a device is
   actually heard.
-- The weights and thresholds are judgement calls checked against one capture and the fixtures. They
+- A second, 27-minute household capture (191 epochs) added: a **sleeping device that wakes for about
+  five seconds at a time, under fresh addresses each time**; tracker rotations landing exactly on
+  quarter-hour wall-clock marks; and concurrent twins on most Apple computers/TVs. In response:
+  re-identification across long silences by identifier-grade content, and sibling grouping of
+  trails that send the same such content at once (`link/siblings.py`). Ambiguous links fell from
+  77 to 16 of ~100; 191 epochs became 50 trails in 38 estimated devices.
+  **Still open:** addresses of one device that share *no* content (e.g. its AirPlay address and its
+  Nearby Info addresses) are only related by being born and dying together. That is not used,
+  because devices that all rotate on the same wall-clock mark look the same; so the device count is
+  still an overestimate.
+- The weights and thresholds are judgement calls checked against two captures and the fixtures. They
   are not validated; that is what v2's ground truth is for.
 
 ---
